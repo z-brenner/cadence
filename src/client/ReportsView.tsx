@@ -10,7 +10,9 @@ import { useMode, useT } from "./mode";
 export function ReportsView({ ws, cycles, activeCycleId }: { ws: Workspace; cycles: Cycle[]; activeCycleId: string | null }) {
   const t = useT();
   const { features } = useMode();
-  const [cycleId, setCycleId] = useState<string>(activeCycleId ?? "");
+  const [picked, setPicked] = useState<string | null>(null);
+  const cycleId = picked ?? activeCycleId ?? "";
+  const setCycleId = setPicked;
   const [report, setReport] = useState<Report | null>(null);
   const [err, setErr] = useState<string | null>(null);
 

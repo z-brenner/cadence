@@ -28,6 +28,9 @@ const { workspace, stage, container, cycle, milestone, item, itemEvent, member }
 
 class AnchorError extends Error {}
 
+/** Calendar date the database will accept and a human plausibly meant. */
+const ymd = z.string().date().refine((d) => d >= "1900-01-01" && d <= "2200-12-31", { message: "date out of range" });
+
 export function createApp() {
   const app = new Hono<AppEnv>();
 
@@ -191,7 +194,7 @@ export function createApp() {
     assigneeId: z.string().nullable().optional(),
     reviewerId: z.string().nullable().optional(),
     size: z.number().nullable().optional(),
-    dueOn: z.string().date().nullable().optional(),
+    dueOn: ymd.nullable().optional(),
     references: z.array(z.object({ kind: z.string(), url: z.string().url(), label: z.string().optional() })).optional(),
     recurrence: z.string().nullable().optional(),
   });
@@ -345,7 +348,7 @@ export function createApp() {
   app.post("/api/workspaces/:id/containers", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
-    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueOn: z.string().date().nullable().optional() }).parse(await c.req.json());
+    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueOn: ymd.nullable().optional() }).parse(await c.req.json());
     const id = nanoid();
     await c.get("db").insert(container).values({ id, workspaceId: ws.id, title: body.title, description: body.description, dueOn: body.dueOn ?? null });
     return c.json({ id }, 201);
@@ -358,7 +361,7 @@ export function createApp() {
   });
 
   const cycleBody = z
-    .object({ name: z.string().min(1).max(80), startsOn: z.string().date(), endsOn: z.string().date() })
+    .object({ name: z.string().trim().min(1).max(80), startsOn: ymd, endsOn: ymd })
     .refine((b) => b.startsOn <= b.endsOn, { message: "endsOn must not be before startsOn", path: ["endsOn"] });
 
   app.post("/api/workspaces/:id/cycles", async (c) => {
@@ -377,22 +380,36 @@ export function createApp() {
     const db = c.get("db");
     const [cur] = await db.select().from(cycle).where(and(eq(cycle.id, c.req.param("cycleId")), eq(cycle.workspaceId, ws.id))).limit(1);
     if (!cur) return c.json({ error: "not found" }, 404);
-    const partial = z.object({ name: z.string().min(1).max(80).optional(), startsOn: z.string().date().optional(), endsOn: z.string().date().optional() }).parse(await c.req.json());
+    const partial = z.object({ name: z.string().trim().min(1).max(80).optional(), startsOn: ymd.optional(), endsOn: ymd.optional() }).parse(await c.req.json());
     const merged = cycleBody.parse({ ...cur, ...partial });
     await db.update(cycle).set(merged).where(eq(cycle.id, cur.id));
     const [row] = await db.select().from(cycle).where(eq(cycle.id, cur.id)).limit(1);
     return c.json(row);
   });
 
-  /** Deleting a cycle unassigns its items (FK is set null) and drops its snapshots (FK cascades). */
+  /**
+   * Deleting a cycle unassigns its items and drops its snapshots (FK cascades).
+   * The unassignment is done explicitly, with a cycle_changed event per item,
+   * so the event log stays complete; the FK's SET NULL is only a backstop.
+   */
   app.delete("/api/workspaces/:id/cycles/:cycleId", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
     const db = c.get("db");
+    const userId = c.get("user")!.id;
     const [cur] = await db.select().from(cycle).where(and(eq(cycle.id, c.req.param("cycleId")), eq(cycle.workspaceId, ws.id))).limit(1);
     if (!cur) return c.json({ error: "not found" }, 404);
-    await db.delete(cycle).where(eq(cycle.id, cur.id));
-    return c.json({ ok: true });
+    const assigned = await db.select({ id: item.id }).from(item).where(eq(item.cycleId, cur.id));
+    const ops: any[] = [];
+    if (assigned.length) {
+      ops.push(
+        db.insert(itemEvent).values(assigned.map((i) => ({ id: nanoid(), workspaceId: ws.id, itemId: i.id, actorId: userId, kind: "cycle_changed", before: { cycleId: cur.id }, after: { cycleId: null } }))),
+        db.update(item).set({ cycleId: null, updatedAt: new Date() }).where(eq(item.cycleId, cur.id)),
+      );
+    }
+    ops.push(db.delete(cycle).where(eq(cycle.id, cur.id)));
+    await db.batch(ops as any);
+    return c.json({ ok: true, unassigned: assigned.length });
   });
 
   // ------------------------------------------------------------------------

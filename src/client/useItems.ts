@@ -19,8 +19,7 @@ export function useItems(wsId: string) {
   const reload = useCallback(async () => {
     const seqAtStart = mutationSeq.current;
     const rows = await api.items(wsId);
-    if (mutationSeq.current === seqAtStart) setItems(rows);
-    setLoaded(true);
+    if (mutationSeq.current === seqAtStart) { setItems(rows); setLoaded(true); }
   }, [wsId]);
 
   useEffect(() => {

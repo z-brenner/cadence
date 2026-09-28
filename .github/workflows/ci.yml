@@ -42,3 +42,15 @@ jobs:
         run: npm run smoke
         env:
           TZ: Pacific/Auckland
+      - name: Install Chromium for the UI walkthrough
+        run: npx playwright install --with-deps chromium
+      - name: UI walkthrough
+        run: |
+          npx tsx scripts/ui/serve.ts &
+          sleep 3
+          node scripts/ui/walkthrough.mjs shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-screenshots
+          path: shots/

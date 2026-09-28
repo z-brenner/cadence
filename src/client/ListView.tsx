@@ -69,7 +69,7 @@ export function ListView({ ws, items, cycles, patch }: Props) {
             {th("stage", t("stage.one"))}
             {show.size && th("size", t("size.one"))}
             {show.dueOn && th("dueOn", t("dueDate"))}
-            {show.cycle && <th>{t("cycle.one")}</th>}
+            {show.cycle && cycles.length > 0 && <th>{t("cycle.one")}</th>}
             {show.references && <th>{t("references")}</th>}
           </tr>
         </thead>
@@ -99,7 +99,7 @@ export function ListView({ ws, items, cycles, patch }: Props) {
               </td>
               {show.size && <td><SizeField item={it} patch={patch} /></td>}
               {show.dueOn && <td><DueField item={it} patch={patch} /></td>}
-              {show.cycle && <td><CycleField item={it} cycles={cycles} patch={patch} /></td>}
+              {show.cycle && cycles.length > 0 && <td><CycleField item={it} cycles={cycles} patch={patch} /></td>}
               {show.references && <td><References item={it} /></td>}
             </tr>
           ))}

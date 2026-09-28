@@ -148,8 +148,18 @@ assert(r.status === 400, "patch cycle rejects startsOn after existing endsOn");
 r = await call("GET", `/api/workspaces/${wsId}/cycles`);
 assert(r.json.length === 2 && r.json[0].id === sprint2, "cycles listed newest first");
 r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { cycleId: sprint2 });
-r = await call("DELETE", `/api/workspaces/${wsId}/cycles/${sprint2}`);
-assert(r.status === 200, "delete cycle");
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "   ", startsOn: "2026-11-01", endsOn: "2026-11-07" });
+assert(r.status === 400, "cycle rejects whitespace-only name");
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "y0", startsOn: "0002-01-01", endsOn: "0002-01-07" });
+assert(r.status === 400, "cycle rejects implausible year with 400, not 500");
+{
+  const db0 = createDb(env.DATABASE_URL);
+  const before = (await db0.select().from(schema.itemEvent).where(eq(schema.itemEvent.itemId, b))).length;
+  r = await call("DELETE", `/api/workspaces/${wsId}/cycles/${sprint2}`);
+  assert(r.status === 200 && r.json.unassigned === 1, "delete cycle reports unassigned count");
+  const after = await db0.select().from(schema.itemEvent).where(eq(schema.itemEvent.itemId, b));
+  assert(after.length === before + 1 && after.at(-1)!.kind === "cycle_changed" && (after.at(-1)!.after as any).cycleId === null, "cycle delete writes cycle_changed event");
+}
 r = await call("GET", `/api/workspaces/${wsId}/items`);
 assert(r.json.find((i: any) => i.id === b).cycleId === null, "deleting a cycle unassigns its items");
 r = await call("DELETE", `/api/workspaces/${wsId}/cycles/${sprint2}`);

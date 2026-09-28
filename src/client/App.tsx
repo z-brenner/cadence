@@ -191,6 +191,7 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
   const cyc = useCycles(ws.id);
   const [draft, setDraft] = useState("");
   const [managing, setManaging] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const hasReports = features.charts.progress || features.charts.throughput || features.charts.flow;
   const views: View[] = [...features.views, ...(hasReports ? (["reports"] as View[]) : [])];
@@ -207,7 +208,8 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
     decided.current = true;
     if (cyc.active && store.items.some((i) => i.cycleId === cyc.active!.id)) setFilter(cyc.active.id);
   }, [cyc.loaded, store.loaded, cyc.active, store.items]);
-  const effectiveFilter = filter;
+  // A filter pointing at a cycle that no longer exists falls back to everything.
+  const effectiveFilter: CycleFilter = filter === "" || filter === "none" || cyc.byId.has(filter) ? filter : "";
   const filtered = useMemo(() => {
     if (effectiveFilter === "") return store.items;
     if (effectiveFilter === "none") return store.items.filter((i) => !i.cycleId);
@@ -219,8 +221,13 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
     if (!draft.trim()) return;
     // New items land in the cycle being viewed, so the board does not appear to swallow them.
     const cycleId = effectiveFilter && effectiveFilter !== "none" ? effectiveFilter : undefined;
-    await store.create(draft.trim(), cycleId ? { cycleId } : {});
-    setDraft("");
+    setCreateErr(null);
+    try {
+      await store.create(draft.trim(), cycleId ? { cycleId } : {});
+      setDraft("");
+    } catch (e) {
+      setCreateErr(String((e as Error).message ?? e));
+    }
   }
 
   const viewLabel: Record<View, string> = {
@@ -267,6 +274,7 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
         <form className="new-item" onSubmit={create}>
           <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("actions.create")} />
           <button type="submit">{t("actions.create")}</button>
+          {createErr && <span className="error">{createErr}</span>}
         </form>
       )}
 
