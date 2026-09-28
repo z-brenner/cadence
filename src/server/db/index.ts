@@ -25,6 +25,8 @@ const pools = new Map<string, Pool>();
 export function createDb(databaseUrl: string): Db {
   const u = new URL(databaseUrl);
   const usePg = u.searchParams.get("driver") === "pg" || u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  // drizzle-orm/neon-http registers identity parsers for date and timestamp
+  // OIDs on the neon client, so date columns arrive as YYYY-MM-DD text.
   if (!usePg) return drizzleNeon(neon(databaseUrl), { schema });
 
   u.searchParams.delete("driver");

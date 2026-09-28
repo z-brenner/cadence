@@ -9,7 +9,7 @@ type Props = {
   patch: (itemId: string, body: Partial<Item>) => void;
 };
 
-type SortKey = "number" | "title" | "stage" | "size" | "dueAt";
+type SortKey = "number" | "title" | "stage" | "size" | "dueOn";
 
 export function ListView({ ws, items, patch }: Props) {
   const t = useT();
@@ -30,7 +30,7 @@ export function ListView({ ws, items, patch }: Props) {
         case "title": return i.title.toLowerCase();
         case "stage": return stageOrder.get(i.stageId ?? "") ?? 999;
         case "size": return i.size ?? -1;
-        case "dueAt": return i.dueAt ?? "9999";
+        case "dueOn": return i.dueOn ?? "9999-99-99";
       }
     };
     return [...filtered].sort((a, b) => {
@@ -67,7 +67,7 @@ export function ListView({ ws, items, patch }: Props) {
             {th("title", t("item.one"))}
             {th("stage", t("stage.one"))}
             {show.size && th("size", t("size.one"))}
-            {show.dueAt && th("dueAt", t("dueDate"))}
+            {show.dueOn && th("dueOn", t("dueDate"))}
             {show.references && <th>{t("references")}</th>}
           </tr>
         </thead>
@@ -96,7 +96,7 @@ export function ListView({ ws, items, patch }: Props) {
                 </select>
               </td>
               {show.size && <td><SizeField item={it} patch={patch} /></td>}
-              {show.dueAt && <td><DueField item={it} patch={patch} /></td>}
+              {show.dueOn && <td><DueField item={it} patch={patch} /></td>}
               {show.references && <td><References item={it} /></td>}
             </tr>
           ))}

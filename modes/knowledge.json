@@ -43,6 +43,6 @@
       ]
     },
     "cycleLengthDays": 7,
-    "cardFields": ["dueAt", "assignee", "reviewer", "size", "container", "labels"]
+    "cardFields": ["dueOn", "assignee", "reviewer", "size", "container", "labels"]
   }
 }

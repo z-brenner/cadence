@@ -70,10 +70,24 @@ Per-workspace overrides (`workspace.modeOverrides`) deep-merge on top of the pro
 - Sizes are stored as numbers. The scale (points, t-shirt, hours) is display only.
 - Every state change writes an `item_event` row. Reports are built from that log, so it must be written from day one.
 
+## Reports
+
+Three charts, each gated by `features.charts` in the mode profile and named by `terminology.reports`:
+
+- progress: open vs closed size per day (Burndown in technical mode)
+- throughput: size closed per ISO week, zero-filled to 12 consecutive weeks (Velocity in technical mode)
+- flow: items per stage per day (Cumulative flow)
+
+Progress and flow read from `daily_snapshot`, written once a day by a cron (Cloudflare: `[triggers]` in `wrangler.toml`; Vercel: `crons` in `vercel.json` calling `/api/cron/snapshots` with `CRON_SECRET`) and lazily whenever the reports page is opened, so the current day is always present. Throughput counts each currently closed item once, in the ISO week of its `closedAt`. Snapshot days are UTC dates; a user far west of UTC who opens reports late in their evening will see the row labeled with the next UTC day (issue #3). Chart colors are a validated colorblind-safe palette assigned in fixed stage order; a table view sits under the charts.
+
+## Testing
+
+`npm run smoke` runs 54 assertions through the real Hono app against a real Postgres: auth, org and workspace creation, items, board moves, event log, reports, cron, mode switching, and permission boundaries. CI runs it under two time zones. Point `DATABASE_URL` at a scratch database; the test creates its own users and never deletes anything. It exercises the node-postgres driver only; the Neon HTTP driver used on Cloudflare and Vercel is not covered by CI.
+
 ## What is not here yet
 
-- List, calendar, and timeline views (the profile declares them; only board is implemented).
-- Reports. The `item_event` log and `daily_snapshot` table are in place; the aggregation job and charts are not.
+- Timeline view (#6) and cycle management UI (#7).
 - Labels, comments, dependencies, milestones have tables and no UI.
 - Invitations UI. Better Auth's organization plugin has the API; wire it to a settings page.
 - Realtime adapter.
+- Deploys to Cloudflare and Vercel are wired per each platform's docs but not yet exercised on the platform.

@@ -24,7 +24,9 @@ type Variables = {
 
 export type AppEnv = { Bindings: Bindings; Variables: Variables };
 
-const { workspace, stage, container, cycle, item, itemEvent, member } = schema;
+const { workspace, stage, container, cycle, milestone, item, itemEvent, member } = schema;
+
+class AnchorError extends Error {}
 
 export function createApp() {
   const app = new Hono<AppEnv>();
@@ -60,6 +62,28 @@ export function createApp() {
     if (!c.get("user")) return c.json({ error: "unauthorized" }, 401);
     await next();
   });
+
+  /**
+   * Verifies every reference in an item body points inside this workspace
+   * (stages, containers, cycles, milestones) or this organization (users).
+   * Returns the first offending field name, or null.
+   */
+  async function foreignRef(db: Db, ws: { id: string; organizationId: string }, body: Record<string, unknown>): Promise<string | null> {
+    const checks: Array<[string, () => Promise<unknown[]>]> = [
+      ["stageId", () => db.select({ id: stage.id }).from(stage).where(and(eq(stage.id, body.stageId as string), eq(stage.workspaceId, ws.id))).limit(1)],
+      ["containerId", () => db.select({ id: container.id }).from(container).where(and(eq(container.id, body.containerId as string), eq(container.workspaceId, ws.id))).limit(1)],
+      ["cycleId", () => db.select({ id: cycle.id }).from(cycle).where(and(eq(cycle.id, body.cycleId as string), eq(cycle.workspaceId, ws.id))).limit(1)],
+      ["milestoneId", () => db.select({ id: milestone.id }).from(milestone).where(and(eq(milestone.id, body.milestoneId as string), eq(milestone.workspaceId, ws.id))).limit(1)],
+      ["assigneeId", () => db.select({ id: member.id }).from(member).where(and(eq(member.userId, body.assigneeId as string), eq(member.organizationId, ws.organizationId))).limit(1)],
+      ["reviewerId", () => db.select({ id: member.id }).from(member).where(and(eq(member.userId, body.reviewerId as string), eq(member.organizationId, ws.organizationId))).limit(1)],
+    ];
+    for (const [field, q] of checks) {
+      const v = body[field];
+      if (typeof v !== "string") continue; // undefined (not sent) or null (clearing) are both fine
+      if ((await q()).length === 0) return field;
+    }
+    return null;
+  }
 
   /** Ensures the current user is a member of the org that owns the workspace. */
   async function loadWorkspace(c: any, workspaceId: string) {
@@ -167,7 +191,7 @@ export function createApp() {
     assigneeId: z.string().nullable().optional(),
     reviewerId: z.string().nullable().optional(),
     size: z.number().nullable().optional(),
-    dueAt: z.string().datetime().nullable().optional(),
+    dueOn: z.string().date().nullable().optional(),
     references: z.array(z.object({ kind: z.string(), url: z.string().url(), label: z.string().optional() })).optional(),
     recurrence: z.string().nullable().optional(),
   });
@@ -178,6 +202,8 @@ export function createApp() {
     const db = c.get("db");
     const body = itemBody.parse(await c.req.json());
     const userId = c.get("user")!.id;
+    const bad = await foreignRef(db, ws, body);
+    if (bad) return c.json({ error: `${bad} not in this workspace` }, 400);
 
     const [{ n }] = await db.select({ n: max(item.number) }).from(item).where(eq(item.workspaceId, ws.id));
     let stageId = body.stageId;
@@ -201,7 +227,6 @@ export function createApp() {
       position: (last?.p ?? 0) + 1000,
       ...body,
       stageId,
-      dueAt: body.dueAt ? new Date(body.dueAt) : null,
     };
     await db.batch([
       db.insert(item).values(values),
@@ -218,6 +243,8 @@ export function createApp() {
     const body = itemBody.partial().parse(await c.req.json());
     const [before] = await db.select().from(item).where(and(eq(item.id, c.req.param("itemId")), eq(item.workspaceId, ws.id))).limit(1);
     if (!before) return c.json({ error: "not found" }, 404);
+    const bad = await foreignRef(db, ws, body);
+    if (bad) return c.json({ error: `${bad} not in this workspace` }, 400);
 
     const events: Array<typeof itemEvent.$inferInsert> = [];
     const ev = (kind: string, key: keyof typeof before) => {
@@ -241,7 +268,7 @@ export function createApp() {
     }
 
     await db.batch([
-      db.update(item).set({ ...body, dueAt: body.dueAt === undefined ? undefined : body.dueAt ? new Date(body.dueAt) : null, closedAt, updatedAt: new Date() }).where(eq(item.id, before.id)),
+      db.update(item).set({ ...body, closedAt, updatedAt: new Date() }).where(eq(item.id, before.id)),
       ...(events.length ? [db.insert(itemEvent).values(events)] : []),
     ] as any);
     const [after] = await db.select().from(item).where(eq(item.id, before.id)).limit(1);
@@ -258,9 +285,21 @@ export function createApp() {
     const [cur] = await db.select().from(item).where(and(eq(item.id, c.req.param("itemId")), eq(item.workspaceId, ws.id))).limit(1);
     if (!cur) return c.json({ error: "not found" }, 404);
 
-    const pos = async (id?: string | null) => (id ? (await db.select({ p: item.position }).from(item).where(eq(item.id, id)).limit(1))[0]?.p : undefined);
-    const a = await pos(body.afterItemId);
-    const b = await pos(body.beforeItemId);
+    // Anchors must be items in this workspace; a foreign anchor is a 400, not a silent fallback.
+    const pos = async (id?: string | null) => {
+      if (!id) return undefined;
+      const [row] = await db.select({ p: item.position }).from(item).where(and(eq(item.id, id), eq(item.workspaceId, ws.id))).limit(1);
+      if (!row) throw new AnchorError();
+      return row.p;
+    };
+    let a: number | undefined, b: number | undefined;
+    try {
+      a = await pos(body.afterItemId);
+      b = await pos(body.beforeItemId);
+    } catch (e) {
+      if (e instanceof AnchorError) return c.json({ error: "anchor item not in this workspace" }, 400);
+      throw e;
+    }
     let position: number;
     if (a !== undefined && b !== undefined) position = (a + b) / 2;
     else if (a !== undefined) position = a + 1000;
@@ -306,9 +345,9 @@ export function createApp() {
   app.post("/api/workspaces/:id/containers", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
-    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueAt: z.string().datetime().nullable().optional() }).parse(await c.req.json());
+    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueOn: z.string().date().nullable().optional() }).parse(await c.req.json());
     const id = nanoid();
-    await c.get("db").insert(container).values({ id, workspaceId: ws.id, title: body.title, description: body.description, dueAt: body.dueAt ? new Date(body.dueAt) : null });
+    await c.get("db").insert(container).values({ id, workspaceId: ws.id, title: body.title, description: body.description, dueOn: body.dueOn ?? null });
     return c.json({ id }, 201);
   });
 
