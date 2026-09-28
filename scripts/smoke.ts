@@ -4,9 +4,9 @@
  * Requires migrations applied first (npm run db:migrate).
  */
 import { createApp } from "../src/server/app";
-import { createDb, schema } from "../src/server/db";
+import { closeDbPools, createDb, schema } from "../src/server/db";
 import { snapshotWorkspace } from "../src/server/reports";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 const env = {
   DATABASE_URL: process.env.DATABASE_URL!,
@@ -86,7 +86,15 @@ r = await call("GET", `/api/workspaces/${wsId}/reports`);
 assert(r.status === 200, `reports (${r.status} ${r.text.slice(0, 120)})`);
 assert(r.json.progress.length === 1, "one snapshot day");
 assert(r.json.progress[0].open === 8 && r.json.progress[0].closed === 3, `open 8 / closed 3 (got ${JSON.stringify(r.json.progress[0])})`);
-assert(r.json.throughput.length === 1 && r.json.throughput[0].count === 2, `throughput counts 2 close events (got ${JSON.stringify(r.json.throughput)})`);
+assert(r.json.throughput.length === 12, `throughput has 12 zero-filled weeks (got ${r.json.throughput.length})`);
+const thisWeek = r.json.throughput[11];
+assert(thisWeek.count === 1 && thisWeek.size === 3, `throughput counts a re-closed item once (got ${JSON.stringify(thisWeek)})`);
+assert(r.json.throughput.slice(0, 11).every((w: any) => w.count === 0), "earlier weeks are zero");
+{
+  const db0 = createDb(env.DATABASE_URL);
+  const [{ label }] = await db0.execute<{ label: string }>(sql`select to_char(date_trunc('week', now()), 'IYYY-"W"IW') as label`).then((x: any) => x.rows ?? x);
+  assert(thisWeek.week === label, `JS ISO week label matches Postgres (${thisWeek.week} vs ${label})`);
+}
 assert(r.json.flow[0].byStage[stages[4].id] === 1, "flow shows 1 item in Done");
 
 // Event log
@@ -104,6 +112,25 @@ await snapshotWorkspace(db, wsId); // idempotent re-run
 r = await call("GET", `/api/workspaces/${wsId}/reports`);
 assert(r.json.progress.length === 1, "snapshot upsert is idempotent");
 
+// Cycle-scoped report: active-cycle detection must not depend on process TZ
+const now = Date.now();
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "Sprint 1", startsAt: new Date(now - 3 * 3600_000).toISOString(), endsAt: new Date(now + 3 * 3600_000).toISOString() });
+assert(r.status === 201, "create active cycle");
+const cycleId = r.json.id;
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${a}`, { cycleId });
+assert(r.status === 200 && r.json.cycleId === cycleId, "PATCH returns updated row with cycleId");
+r = await call("GET", `/api/workspaces/${wsId}/reports?cycleId=${cycleId}`);
+assert(r.json.progress.length === 1 && r.json.progress[0].closed === 3 && r.json.progress[0].open === 0, `cycle-scoped snapshot written for active cycle under TZ=${process.env.TZ ?? "unset"} (got ${JSON.stringify(r.json.progress)})`);
+assert(r.json.throughput[11].count === 1, "cycle-scoped throughput");
+
+// Move returns the row with closedAt derived server-side
+r = await call("POST", `/api/workspaces/${wsId}/items/${b}/move`, { stageId: stages[4].id });
+assert(r.status === 200 && r.json.closedAt && r.json.id === b, "move returns updated row with closedAt");
+r = await call("POST", `/api/workspaces/${wsId}/items/${b}/move`, { stageId: stages[1].id });
+assert(r.json.closedAt === null, "move off terminal clears closedAt in response");
+r = await call("POST", `/api/workspaces/${wsId}/items/${b}/move`, { stageId: "not-a-stage" });
+assert(r.status === 400, "move to foreign stage rejected");
+
 // Mode switch keeps data
 r = await call("PATCH", `/api/workspaces/${wsId}`, { mode: "knowledge" });
 r = await call("GET", `/api/workspaces/${wsId}`);
@@ -120,5 +147,13 @@ cookie = "";
 r = await call("GET", `/api/workspaces/${wsId}`);
 assert(r.status === 401, "anonymous gets 401");
 
+// Pool reuse: many createDb calls must not open many connections
+{
+  const before = Number((await db.execute(sql`select count(*)::int as n from pg_stat_activity where datname = current_database()`).then((x: any) => (x.rows ?? x)[0].n)));
+  for (let i = 0; i < 25; i++) await createDb(env.DATABASE_URL).execute(sql`select 1`);
+  const after = Number((await db.execute(sql`select count(*)::int as n from pg_stat_activity where datname = current_database()`).then((x: any) => (x.rows ?? x)[0].n)));
+  assert(after - before <= 10, `createDb reuses a pool (connections ${before} -> ${after})`);
+}
+
 console.log("\nALL PASS");
-process.exit(0);
+await closeDbPools();

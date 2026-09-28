@@ -229,7 +229,7 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
         </form>
       )}
 
-      {active === "board" && <Board ws={ws} {...store} />}
+      {active === "board" && <Board ws={ws} items={store.items} patch={store.patch} move={store.move} />}
       {active === "list" && <ListView ws={ws} items={store.items} patch={store.patch} />}
       {active === "calendar" && <CalendarView items={store.items} patch={store.patch} />}
       {active === "timeline" && <p className="muted">Timeline is not built yet.</p>}

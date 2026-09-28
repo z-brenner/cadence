@@ -63,10 +63,10 @@ export const api = {
   createItem: (wsId: string, body: Partial<Item> & { title: string }) =>
     req<{ id: string; number: number }>(`/api/workspaces/${wsId}/items`, { method: "POST", body: JSON.stringify(body) }),
   updateItem: (wsId: string, itemId: string, body: Partial<Item>) =>
-    req(`/api/workspaces/${wsId}/items/${itemId}`, { method: "PATCH", body: JSON.stringify(body) }),
+    req<Item>(`/api/workspaces/${wsId}/items/${itemId}`, { method: "PATCH", body: JSON.stringify(body) }),
   cycles: (wsId: string) => req<Cycle[]>(`/api/workspaces/${wsId}/cycles`),
   report: (wsId: string, cycleId: string | null) =>
     req<Report>(`/api/workspaces/${wsId}/reports${cycleId ? `?cycleId=${encodeURIComponent(cycleId)}` : ""}`),
   moveItem: (wsId: string, itemId: string, body: { stageId: string; afterItemId?: string | null; beforeItemId?: string | null }) =>
-    req<{ position: number }>(`/api/workspaces/${wsId}/items/${itemId}/move`, { method: "POST", body: JSON.stringify(body) }),
+    req<Item>(`/api/workspaces/${wsId}/items/${itemId}/move`, { method: "POST", body: JSON.stringify(body) }),
 };

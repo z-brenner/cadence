@@ -13,7 +13,8 @@ export default {
   },
 
   /** Nightly snapshot for reports. Schedule lives in wrangler.toml [triggers]. */
-  async scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-    ctx.waitUntil(snapshotAll(createDb(env.DATABASE_URL)));
+  async scheduled(_event: ScheduledEvent, env: Bindings, _ctx: ExecutionContext) {
+    // Awaited so a failed run is reported as a failed cron invocation.
+    await snapshotAll(createDb(env.DATABASE_URL));
   },
 };

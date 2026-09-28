@@ -1,20 +1,19 @@
 import { useMemo, useState, type DragEvent } from "react";
-import { api, type Item, type Workspace } from "./api";
+import type { Item, Workspace } from "./api";
 import { DueField, References, SizeField, useVisibleFields } from "./fields";
 
 type Props = {
   ws: Workspace;
   items: Item[];
-  setItems: React.Dispatch<React.SetStateAction<Item[]>>;
   patch: (itemId: string, body: Partial<Item>) => void;
-  reload: () => Promise<void>;
+  move: (itemId: string, body: { stageId: string; afterItemId?: string | null }, optimistic: Partial<Item>) => void;
 };
 
 /**
  * Board renders entirely from the resolved profile. Native HTML5 drag and drop
  * keeps the dependency list short; swap in dnd-kit if you need touch support.
  */
-export function Board({ ws, items, setItems, patch, reload }: Props) {
+export function Board({ ws, items, patch, move }: Props) {
   const show = useVisibleFields();
   const [dragging, setDragging] = useState<string | null>(null);
 
@@ -32,8 +31,7 @@ export function Board({ ws, items, setItems, patch, reload }: Props) {
     if (!itemId) return;
     const col = byStage.get(stageId) ?? [];
     const last = col.filter((i) => i.id !== itemId).at(-1);
-    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, stageId, position: (last?.position ?? 0) + 1000 } : i)));
-    api.moveItem(ws.id, itemId, { stageId, afterItemId: last?.id ?? null }).catch(reload);
+    move(itemId, { stageId, afterItemId: last?.id ?? null }, { stageId, position: (last?.position ?? 0) + 1000 });
     setDragging(null);
   }
 

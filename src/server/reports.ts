@@ -1,4 +1,4 @@
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { Db } from "./db";
 import { schema } from "./db";
@@ -22,7 +22,8 @@ export async function snapshotWorkspace(db: Db, workspaceId: string, now = new D
   const activeCycles = await db
     .select({ id: cycle.id })
     .from(cycle)
-    .where(and(eq(cycle.workspaceId, workspaceId), sql`${cycle.startsAt} <= ${now}`, sql`${cycle.endsAt} >= ${now}`));
+    // Column-mapped operators so the Date is bound as an ISO string regardless of process TZ.
+    .where(and(eq(cycle.workspaceId, workspaceId), lte(cycle.startsAt, now), gte(cycle.endsAt, now)));
 
   const scopes: Array<string | null> = [null, ...activeCycles.map((c) => c.id)];
   for (const cycleId of scopes) {
@@ -89,25 +90,56 @@ export async function buildReport(db: Db, workspaceId: string, cycleId: string |
     byStage: Object.fromEntries(Object.entries(s.byStage).map(([k, v]) => [k, v.count])),
   }));
 
-  const twelveWeeks = new Date(now.getTime() - 84 * 86_400_000);
-  const closed = await db
+  // Throughput counts each item once, in the week of its current closedAt.
+  // Using closedAt rather than "closed" events means a reopened item leaves
+  // the total and a re-closed item is counted once, matching the snapshot.
+  const weeks = 12;
+  const monday = startOfIsoWeek(now);
+  const cutoff = new Date(monday.getTime() - (weeks - 1) * 7 * 86_400_000);
+  const closedRows = await db
     .select({
-      week: sql<string>`to_char(date_trunc('week', ${itemEvent.at}), 'IYYY-"W"IW')`,
+      week: sql<string>`to_char(date_trunc('week', ${item.closedAt}), 'IYYY-"W"IW')`,
       size: sql<number>`coalesce(sum(${item.size}), 0)::float`,
       count: sql<number>`count(*)::int`,
     })
-    .from(itemEvent)
-    .innerJoin(item, eq(item.id, itemEvent.itemId))
+    .from(item)
     .where(
       and(
-        eq(itemEvent.workspaceId, workspaceId),
-        eq(itemEvent.kind, "closed"),
-        gte(itemEvent.at, twelveWeeks),
+        eq(item.workspaceId, workspaceId),
+        isNotNull(item.closedAt),
+        gte(item.closedAt, cutoff),
         cycleId ? eq(item.cycleId, cycleId) : sql`true`,
       ),
     )
-    .groupBy(sql`1`)
-    .orderBy(sql`1`);
+    .groupBy(sql`1`);
 
-  return { progress, throughput: closed, flow };
+  // Zero-fill so 12 bars are 12 consecutive weeks.
+  const byWeek = new Map(closedRows.map((r) => [r.week, r]));
+  const throughput = Array.from({ length: weeks }, (_, i) => {
+    const d = new Date(cutoff.getTime() + i * 7 * 86_400_000);
+    const week = isoWeekLabel(d);
+    const r = byWeek.get(week);
+    return { week, size: r?.size ?? 0, count: r?.count ?? 0 };
+  });
+
+  return { progress, throughput, flow };
+}
+
+/** Monday 00:00 UTC of the ISO week containing d. */
+function startOfIsoWeek(d: Date) {
+  const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = (day.getUTCDay() + 6) % 7; // Mon=0
+  return new Date(day.getTime() - dow * 86_400_000);
+}
+
+/** Same label Postgres produces with to_char(..., 'IYYY-"W"IW'). Verified against Postgres in scripts/smoke.ts. */
+function isoWeekLabel(d: Date) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // Thursday of this ISO week
+  const thursday = t.getTime();
+  const isoYear = t.getUTCFullYear();
+  const firstThursday = new Date(Date.UTC(isoYear, 0, 4));
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - ((firstThursday.getUTCDay() + 6) % 7) + 3);
+  const week = 1 + Math.round((thursday - firstThursday.getTime()) / (7 * 86_400_000));
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
 }

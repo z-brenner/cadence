@@ -8,6 +8,7 @@
     "cycle": { "one": "Sprint", "many": "Sprints" },
     "stage": { "one": "Pipeline", "many": "Pipelines" },
     "milestone": { "one": "Release", "many": "Releases" },
+    "dueDate": "Due",
     "size": { "one": "Estimate", "many": "Estimates" },
     "dependency": { "blockedBy": "Blocked by", "blocks": "Blocks" },
     "reviewer": "Reviewer",

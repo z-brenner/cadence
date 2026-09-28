@@ -45,7 +45,8 @@ export function ReportsView({ ws }: { ws: Workspace }) {
     const series = ws.stages.map((s) => ({ name: s.name, values: report.flow.map((f) => f.byStage[s.id] ?? 0) }));
     const unknown = report.flow.map((f) => f.byStage["none"] ?? 0);
     if (unknown.some((v) => v > 0)) series.push({ name: `No ${t("stage.one").toLowerCase()}`, values: unknown });
-    return { labels, series: series.filter((s) => s.values.some((v) => v > 0)) };
+    // Not filtered: dropping an empty stage would shift every later stage's color slot.
+    return { labels, series };
   }, [report, ws.stages, t]);
 
   const throughput = useMemo(() => {
@@ -57,7 +58,6 @@ export function ReportsView({ ws }: { ws: Workspace }) {
   if (!report || !progress || !flow || !throughput) return <p className="muted">Loading</p>;
 
   const empty = `Snapshots accrue daily. Check back after a few days of activity.`;
-  const nothingEnabled = !features.charts.progress && !features.charts.throughput && !features.charts.flow;
 
   return (
     <div className="reports">
@@ -74,7 +74,6 @@ export function ReportsView({ ws }: { ws: Workspace }) {
           </label>
         </div>
       )}
-      {nothingEnabled && <p className="muted">This mode has no reports enabled.</p>}
       {features.charts.progress && (
         <LineChart title={t("reports.progress")} labels={progress.labels} series={progress.series} empty={empty} />
       )}

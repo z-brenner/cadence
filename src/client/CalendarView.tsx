@@ -13,8 +13,9 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 /**
- * Month grid keyed on dueAt. Dropping a card on a day sets its due date;
- * the API stores a UTC instant at local noon so the date survives time zones.
+ * Month grid keyed on dueAt. Dropping a card on a day sets its due date.
+ * The client writes local noon as a UTC instant so the calendar date survives
+ * ordinary time zone offsets; the API stores whatever instant it is given.
  */
 export function CalendarView({ items, patch }: Props) {
   const t = useT();
@@ -96,7 +97,7 @@ export function CalendarView({ items, patch }: Props) {
       </div>
       <section className="cal-undated" onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, null)}>
         <header>
-          <span>No {t("milestone.one").toLowerCase()}</span>
+          <span>No {t("dueDate").toLowerCase()} date</span>
           <span className="count">{undated.length}</span>
         </header>
         <div className="cal-undated-items">{undated.map(card)}</div>

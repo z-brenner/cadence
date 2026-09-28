@@ -244,7 +244,8 @@ export function createApp() {
       db.update(item).set({ ...body, dueAt: body.dueAt === undefined ? undefined : body.dueAt ? new Date(body.dueAt) : null, closedAt, updatedAt: new Date() }).where(eq(item.id, before.id)),
       ...(events.length ? [db.insert(itemEvent).values(events)] : []),
     ] as any);
-    return c.json({ ok: true });
+    const [after] = await db.select().from(item).where(eq(item.id, before.id)).limit(1);
+    return c.json(after);
   });
 
   /** Board move: change stage and/or position in one call. */
@@ -278,7 +279,8 @@ export function createApp() {
       ops.push(db.insert(itemEvent).values(events));
     }
     await db.batch(ops as any);
-    return c.json({ ok: true, position });
+    const [after] = await db.select().from(item).where(eq(item.id, cur.id)).limit(1);
+    return c.json(after);
   });
 
   // ------------------------------------------------------------------------

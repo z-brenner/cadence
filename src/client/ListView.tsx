@@ -67,7 +67,7 @@ export function ListView({ ws, items, patch }: Props) {
             {th("title", t("item.one"))}
             {th("stage", t("stage.one"))}
             {show.size && th("size", t("size.one"))}
-            {show.dueAt && th("dueAt", t("milestone.one"))}
+            {show.dueAt && th("dueAt", t("dueDate"))}
             {show.references && <th>{t("references")}</th>}
           </tr>
         </thead>
