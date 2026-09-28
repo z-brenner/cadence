@@ -1,0 +1,40 @@
+{
+  "id": "technical",
+  "name": "Technical",
+  "description": "Engineering teams: issues, epics, sprints, story points, code references, velocity.",
+  "terminology": {
+    "item": { "one": "Issue", "many": "Issues" },
+    "container": { "one": "Epic", "many": "Epics" },
+    "cycle": { "one": "Sprint", "many": "Sprints" },
+    "stage": { "one": "Pipeline", "many": "Pipelines" },
+    "milestone": { "one": "Release", "many": "Releases" },
+    "size": { "one": "Estimate", "many": "Estimates" },
+    "dependency": { "blockedBy": "Blocked by", "blocks": "Blocks" },
+    "reviewer": "Reviewer",
+    "references": "Branches and PRs",
+    "reports": { "progress": "Burndown", "throughput": "Velocity", "flow": "Cumulative flow" },
+    "actions": { "create": "New issue", "close": "Close", "reopen": "Reopen" }
+  },
+  "features": {
+    "codeReferences": true,
+    "reviewer": false,
+    "recurrence": false,
+    "dueDates": false,
+    "sizing": true,
+    "charts": { "progress": true, "throughput": true, "flow": true },
+    "views": ["board", "list", "timeline"],
+    "codeMarkdown": true
+  },
+  "defaults": {
+    "stages": [
+      { "name": "New Issues" },
+      { "name": "Backlog" },
+      { "name": "In Progress" },
+      { "name": "In Review" },
+      { "name": "Done", "terminal": true }
+    ],
+    "sizeScale": { "kind": "points", "values": [1, 2, 3, 5, 8, 13] },
+    "cycleLengthDays": 14,
+    "cardFields": ["number", "size", "assignee", "container", "labels", "references"]
+  }
+}

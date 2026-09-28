@@ -1,0 +1,326 @@
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { and, asc, desc, eq, max } from "drizzle-orm";
+import { z } from "zod";
+import { nanoid } from "nanoid";
+import { createDb, type Db, schema } from "./db";
+import { createAuth, type Auth, type AuthEnv } from "./auth";
+import { resolveMode, listModes } from "./modes";
+
+export type Bindings = AuthEnv & {
+  DATABASE_URL: string;
+  APP_NAME?: string;
+};
+
+type Variables = {
+  db: Db;
+  auth: Auth;
+  user: { id: string; email: string; name: string } | null;
+  session: { activeOrganizationId?: string | null } | null;
+};
+
+export type AppEnv = { Bindings: Bindings; Variables: Variables };
+
+const { workspace, stage, container, cycle, item, itemEvent, member } = schema;
+
+export function createApp() {
+  const app = new Hono<AppEnv>();
+
+  app.use("/api/*", cors({ origin: (o) => o, credentials: true }));
+
+  // Per-request wiring. Workers have no module-level singletons worth trusting.
+  app.use("/api/*", async (c, next) => {
+    const db = createDb(c.env.DATABASE_URL);
+    const auth = createAuth(db, c.env);
+    c.set("db", db);
+    c.set("auth", auth);
+    const s = await auth.api.getSession({ headers: c.req.raw.headers });
+    c.set("user", s?.user ?? null);
+    c.set("session", s?.session ?? null);
+    await next();
+  });
+
+  app.on(["GET", "POST"], "/api/auth/*", (c) => c.get("auth").handler(c.req.raw));
+
+  app.get("/api/health", (c) => c.json({ ok: true, app: c.env.APP_NAME ?? "Cadence" }));
+
+  app.get("/api/modes", (c) => c.json(listModes()));
+
+  // ------------------------------------------------------------------------
+  // Auth guard for everything below
+  // ------------------------------------------------------------------------
+  app.use("/api/workspaces/*", async (c, next) => {
+    if (!c.get("user")) return c.json({ error: "unauthorized" }, 401);
+    await next();
+  });
+  app.use("/api/workspaces", async (c, next) => {
+    if (!c.get("user")) return c.json({ error: "unauthorized" }, 401);
+    await next();
+  });
+
+  /** Ensures the current user is a member of the org that owns the workspace. */
+  async function loadWorkspace(c: any, workspaceId: string) {
+    const db: Db = c.get("db");
+    const userId: string = c.get("user").id;
+    const [ws] = await db.select().from(workspace).where(eq(workspace.id, workspaceId)).limit(1);
+    if (!ws) return null;
+    const [m] = await db
+      .select()
+      .from(member)
+      .where(and(eq(member.organizationId, ws.organizationId), eq(member.userId, userId)))
+      .limit(1);
+    return m ? ws : null;
+  }
+
+  // ------------------------------------------------------------------------
+  // Workspaces
+  // ------------------------------------------------------------------------
+  app.get("/api/workspaces", async (c) => {
+    const db = c.get("db");
+    const userId = c.get("user")!.id;
+    const rows = await db
+      .select({ ws: workspace })
+      .from(workspace)
+      .innerJoin(member, and(eq(member.organizationId, workspace.organizationId), eq(member.userId, userId)));
+    return c.json(rows.map((r) => r.ws));
+  });
+
+  const createWorkspaceBody = z.object({
+    organizationId: z.string(),
+    name: z.string().min(1).max(80),
+    slug: z.string().regex(/^[a-z0-9-]+$/),
+    mode: z.string().default("knowledge"),
+  });
+
+  app.post("/api/workspaces", async (c) => {
+    const db = c.get("db");
+    const body = createWorkspaceBody.parse(await c.req.json());
+    const userId = c.get("user")!.id;
+    const [m] = await db
+      .select()
+      .from(member)
+      .where(and(eq(member.organizationId, body.organizationId), eq(member.userId, userId)))
+      .limit(1);
+    if (!m) return c.json({ error: "not a member of that organization" }, 403);
+
+    const profile = resolveMode(body.mode, {});
+    const id = nanoid();
+    await db.insert(workspace).values({ id, ...body });
+    // Seed stages from the mode's defaults so the board is usable immediately.
+    await db.insert(stage).values(
+      profile.defaults.stages.map((s, i) => ({
+        id: nanoid(),
+        workspaceId: id,
+        name: s.name,
+        position: i + 1,
+        isTerminal: !!s.terminal,
+      })),
+    );
+    return c.json({ id }, 201);
+  });
+
+  /** Workspace plus its fully resolved mode profile. The client renders from this. */
+  app.get("/api/workspaces/:id", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const stages = await db.select().from(stage).where(eq(stage.workspaceId, ws.id)).orderBy(asc(stage.position));
+    return c.json({ ...ws, profile: resolveMode(ws.mode, ws.modeOverrides ?? {}), stages });
+  });
+
+  app.patch("/api/workspaces/:id", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const body = z
+      .object({ name: z.string().min(1).optional(), mode: z.string().optional(), modeOverrides: z.record(z.unknown()).optional() })
+      .parse(await c.req.json());
+    if (body.mode) resolveMode(body.mode, {}); // throws on unknown mode
+    await c.get("db").update(workspace).set(body).where(eq(workspace.id, ws.id));
+    return c.json({ ok: true });
+  });
+
+  // ------------------------------------------------------------------------
+  // Items
+  // ------------------------------------------------------------------------
+  app.get("/api/workspaces/:id/items", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const rows = await c
+      .get("db")
+      .select()
+      .from(item)
+      .where(eq(item.workspaceId, ws.id))
+      .orderBy(asc(item.stageId), asc(item.position));
+    return c.json(rows);
+  });
+
+  const itemBody = z.object({
+    title: z.string().min(1).max(300),
+    description: z.string().optional(),
+    stageId: z.string().optional(),
+    containerId: z.string().nullable().optional(),
+    cycleId: z.string().nullable().optional(),
+    milestoneId: z.string().nullable().optional(),
+    assigneeId: z.string().nullable().optional(),
+    reviewerId: z.string().nullable().optional(),
+    size: z.number().nullable().optional(),
+    dueAt: z.string().datetime().nullable().optional(),
+    references: z.array(z.object({ kind: z.string(), url: z.string().url(), label: z.string().optional() })).optional(),
+    recurrence: z.string().nullable().optional(),
+  });
+
+  app.post("/api/workspaces/:id/items", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const body = itemBody.parse(await c.req.json());
+    const userId = c.get("user")!.id;
+
+    const [{ n }] = await db.select({ n: max(item.number) }).from(item).where(eq(item.workspaceId, ws.id));
+    let stageId = body.stageId;
+    if (!stageId) {
+      const [first] = await db.select().from(stage).where(eq(stage.workspaceId, ws.id)).orderBy(asc(stage.position)).limit(1);
+      stageId = first?.id;
+    }
+    const [last] = await db
+      .select({ p: item.position })
+      .from(item)
+      .where(and(eq(item.workspaceId, ws.id), eq(item.stageId, stageId ?? "")))
+      .orderBy(desc(item.position))
+      .limit(1);
+
+    const id = nanoid();
+    const values = {
+      id,
+      workspaceId: ws.id,
+      number: (n ?? 0) + 1,
+      creatorId: userId,
+      position: (last?.p ?? 0) + 1000,
+      ...body,
+      stageId,
+      dueAt: body.dueAt ? new Date(body.dueAt) : null,
+    };
+    await db.batch([
+      db.insert(item).values(values),
+      db.insert(itemEvent).values({ id: nanoid(), workspaceId: ws.id, itemId: id, actorId: userId, kind: "created", after: { stageId, size: body.size ?? null } }),
+    ]);
+    return c.json({ id, number: values.number }, 201);
+  });
+
+  app.patch("/api/workspaces/:id/items/:itemId", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const userId = c.get("user")!.id;
+    const body = itemBody.partial().parse(await c.req.json());
+    const [before] = await db.select().from(item).where(and(eq(item.id, c.req.param("itemId")), eq(item.workspaceId, ws.id))).limit(1);
+    if (!before) return c.json({ error: "not found" }, 404);
+
+    const events: Array<typeof itemEvent.$inferInsert> = [];
+    const ev = (kind: string, key: keyof typeof before) => {
+      if (key in body && (body as any)[key] !== before[key]) {
+        events.push({ id: nanoid(), workspaceId: ws.id, itemId: before.id, actorId: userId, kind, before: { [key]: before[key] }, after: { [key]: (body as any)[key] } });
+      }
+    };
+    ev("stage_changed", "stageId");
+    ev("size_changed", "size");
+    ev("cycle_changed", "cycleId");
+    ev("container_changed", "containerId");
+
+    // Closing is derived from the terminal flag on the stage, not from a mode.
+    let closedAt = before.closedAt;
+    if (body.stageId && body.stageId !== before.stageId) {
+      const [st] = await db.select().from(stage).where(eq(stage.id, body.stageId)).limit(1);
+      const nowClosed = !!st?.isTerminal;
+      if (nowClosed && !closedAt) { closedAt = new Date(); events.push({ id: nanoid(), workspaceId: ws.id, itemId: before.id, actorId: userId, kind: "closed" }); }
+      if (!nowClosed && closedAt) { closedAt = null; events.push({ id: nanoid(), workspaceId: ws.id, itemId: before.id, actorId: userId, kind: "reopened" }); }
+    }
+
+    await db.batch([
+      db.update(item).set({ ...body, dueAt: body.dueAt === undefined ? undefined : body.dueAt ? new Date(body.dueAt) : null, closedAt, updatedAt: new Date() }).where(eq(item.id, before.id)),
+      ...(events.length ? [db.insert(itemEvent).values(events)] : []),
+    ] as any);
+    return c.json({ ok: true });
+  });
+
+  /** Board move: change stage and/or position in one call. */
+  app.post("/api/workspaces/:id/items/:itemId/move", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const userId = c.get("user")!.id;
+    const body = z.object({ stageId: z.string(), afterItemId: z.string().nullable().optional(), beforeItemId: z.string().nullable().optional() }).parse(await c.req.json());
+    const [cur] = await db.select().from(item).where(and(eq(item.id, c.req.param("itemId")), eq(item.workspaceId, ws.id))).limit(1);
+    if (!cur) return c.json({ error: "not found" }, 404);
+
+    const pos = async (id?: string | null) => (id ? (await db.select({ p: item.position }).from(item).where(eq(item.id, id)).limit(1))[0]?.p : undefined);
+    const a = await pos(body.afterItemId);
+    const b = await pos(body.beforeItemId);
+    let position: number;
+    if (a !== undefined && b !== undefined) position = (a + b) / 2;
+    else if (a !== undefined) position = a + 1000;
+    else if (b !== undefined) position = b - 1000;
+    else position = 1000;
+
+    const [st] = await db.select().from(stage).where(eq(stage.id, body.stageId)).limit(1);
+    const closedAt = st?.isTerminal ? (cur.closedAt ?? new Date()) : null;
+    const ops: any[] = [db.update(item).set({ stageId: body.stageId, position, closedAt, updatedAt: new Date() }).where(eq(item.id, cur.id))];
+    if (body.stageId !== cur.stageId) {
+      ops.push(db.insert(itemEvent).values({ id: nanoid(), workspaceId: ws.id, itemId: cur.id, actorId: userId, kind: "stage_changed", before: { stageId: cur.stageId }, after: { stageId: body.stageId } }));
+    }
+    await db.batch(ops as any);
+    return c.json({ ok: true, position });
+  });
+
+  // ------------------------------------------------------------------------
+  // Stages, containers, cycles (thin CRUD; extend as needed)
+  // ------------------------------------------------------------------------
+  app.post("/api/workspaces/:id/stages", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const body = z.object({ name: z.string().min(1), isTerminal: z.boolean().optional() }).parse(await c.req.json());
+    const db = c.get("db");
+    const [{ m }] = await db.select({ m: max(stage.position) }).from(stage).where(eq(stage.workspaceId, ws.id));
+    const id = nanoid();
+    await db.insert(stage).values({ id, workspaceId: ws.id, name: body.name, position: (m ?? 0) + 1, isTerminal: !!body.isTerminal });
+    return c.json({ id }, 201);
+  });
+
+  app.get("/api/workspaces/:id/containers", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    return c.json(await c.get("db").select().from(container).where(eq(container.workspaceId, ws.id)));
+  });
+
+  app.post("/api/workspaces/:id/containers", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueAt: z.string().datetime().nullable().optional() }).parse(await c.req.json());
+    const id = nanoid();
+    await c.get("db").insert(container).values({ id, workspaceId: ws.id, title: body.title, description: body.description, dueAt: body.dueAt ? new Date(body.dueAt) : null });
+    return c.json({ id }, 201);
+  });
+
+  app.get("/api/workspaces/:id/cycles", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    return c.json(await c.get("db").select().from(cycle).where(eq(cycle.workspaceId, ws.id)).orderBy(desc(cycle.startsAt)));
+  });
+
+  app.post("/api/workspaces/:id/cycles", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const body = z.object({ name: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() }).parse(await c.req.json());
+    const id = nanoid();
+    await c.get("db").insert(cycle).values({ id, workspaceId: ws.id, name: body.name, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt) });
+    return c.json({ id }, 201);
+  });
+
+  app.onError((err, c) => {
+    if (err instanceof z.ZodError) return c.json({ error: "validation", issues: err.issues }, 400);
+    console.error(err);
+    return c.json({ error: "internal" }, 500);
+  });
+
+  return app;
+}

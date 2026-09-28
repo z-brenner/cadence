@@ -1,0 +1,18 @@
+name = "cadence"
+main = "src/server/entry.cloudflare.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static SPA served by the same Worker. API routes under /api/* are handled by Hono first.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# Secrets (set with `wrangler secret put NAME`):
+#   DATABASE_URL           Postgres connection string (Neon, Supabase, or Hyperdrive)
+#   BETTER_AUTH_SECRET     32+ random bytes, base64
+#   BETTER_AUTH_URL        Public URL of this deployment, e.g. https://cadence.example.com
+
+[vars]
+APP_NAME = "Cadence"

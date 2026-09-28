@@ -1,0 +1,47 @@
+{
+  "id": "knowledge",
+  "name": "Knowledge work",
+  "description": "Legal, ops, marketing, and other non-engineering teams: tasks, projects, weekly cycles, effort sizes, due dates, approvals.",
+  "terminology": {
+    "item": { "one": "Task", "many": "Tasks" },
+    "container": { "one": "Project", "many": "Projects" },
+    "cycle": { "one": "Week", "many": "Weeks" },
+    "stage": { "one": "Stage", "many": "Stages" },
+    "milestone": { "one": "Deadline", "many": "Deadlines" },
+    "size": { "one": "Effort", "many": "Effort" },
+    "dependency": { "blockedBy": "Waiting on", "blocks": "Needed by" },
+    "reviewer": "Approver",
+    "references": "Links",
+    "reports": { "progress": "Progress", "throughput": "Completed per week", "flow": "Work in each stage" },
+    "actions": { "create": "New task", "close": "Mark complete", "reopen": "Reopen" }
+  },
+  "features": {
+    "codeReferences": false,
+    "reviewer": true,
+    "recurrence": true,
+    "dueDates": true,
+    "sizing": true,
+    "charts": { "progress": true, "throughput": true, "flow": false },
+    "views": ["board", "list", "calendar"],
+    "codeMarkdown": false
+  },
+  "defaults": {
+    "stages": [
+      { "name": "To do" },
+      { "name": "Doing" },
+      { "name": "Waiting on someone" },
+      { "name": "Complete", "terminal": true }
+    ],
+    "sizeScale": {
+      "kind": "tshirt",
+      "values": [
+        { "label": "S", "value": 1 },
+        { "label": "M", "value": 3 },
+        { "label": "L", "value": 5 },
+        { "label": "XL", "value": 8 }
+      ]
+    },
+    "cycleLengthDays": 7,
+    "cardFields": ["dueAt", "assignee", "reviewer", "size", "container", "labels"]
+  }
+}
