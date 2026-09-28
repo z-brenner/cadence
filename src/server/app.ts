@@ -191,7 +191,7 @@ export function createApp() {
     assigneeId: z.string().nullable().optional(),
     reviewerId: z.string().nullable().optional(),
     size: z.number().nullable().optional(),
-    dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+    dueOn: z.string().date().nullable().optional(),
     references: z.array(z.object({ kind: z.string(), url: z.string().url(), label: z.string().optional() })).optional(),
     recurrence: z.string().nullable().optional(),
   });
@@ -345,7 +345,7 @@ export function createApp() {
   app.post("/api/workspaces/:id/containers", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
-    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional() }).parse(await c.req.json());
+    const body = z.object({ title: z.string().min(1), description: z.string().optional(), dueOn: z.string().date().nullable().optional() }).parse(await c.req.json());
     const id = nanoid();
     await c.get("db").insert(container).values({ id, workspaceId: ws.id, title: body.title, description: body.description, dueOn: body.dueOn ?? null });
     return c.json({ id }, 201);

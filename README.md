@@ -82,7 +82,7 @@ Progress and flow read from `daily_snapshot`, written once a day by a cron (Clou
 
 ## Testing
 
-`npm run smoke` runs 53 assertions through the real Hono app against a real Postgres: auth, org and workspace creation, items, board moves, event log, reports, cron, mode switching, and permission boundaries. CI runs it under two time zones. Point `DATABASE_URL` at a scratch database; the test creates its own users and never deletes anything.
+`npm run smoke` runs 54 assertions through the real Hono app against a real Postgres: auth, org and workspace creation, items, board moves, event log, reports, cron, mode switching, and permission boundaries. CI runs it under two time zones. Point `DATABASE_URL` at a scratch database; the test creates its own users and never deletes anything. It exercises the node-postgres driver only; the Neon HTTP driver used on Cloudflare and Vercel is not covered by CI.
 
 ## What is not here yet
 

@@ -83,6 +83,8 @@ r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueOn: "2026-10-
 assert(r.status === 200 && r.json.dueOn === "2026-10-01", "patch dueOn and size; date round-trips as YYYY-MM-DD");
 r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueOn: "2026-10-01T12:00:00Z" });
 assert(r.status === 400, "dueOn rejects a timestamp");
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueOn: "2026-02-30" });
+assert(r.status === 400, "dueOn rejects an impossible calendar date with 400, not 500");
 
 // Reports
 r = await call("POST", `/api/workspaces/${wsId}/items/${a}/move`, { stageId: stages[4].id });
