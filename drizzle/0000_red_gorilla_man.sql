@@ -47,7 +47,8 @@ CREATE TABLE "daily_snapshot" (
 	"day" text NOT NULL,
 	"by_stage" jsonb NOT NULL,
 	"open_size" real NOT NULL,
-	"closed_size" real NOT NULL
+	"closed_size" real NOT NULL,
+	CONSTRAINT "snapshot_ws_cycle_day" UNIQUE NULLS NOT DISTINCT("workspace_id","cycle_id","day")
 );
 --> statement-breakpoint
 CREATE TABLE "dependency" (
@@ -63,7 +64,8 @@ CREATE TABLE "invitation" (
 	"role" text,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"expires_at" timestamp NOT NULL,
-	"inviter_id" text NOT NULL
+	"inviter_id" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "item" (
@@ -222,7 +224,6 @@ ALTER TABLE "workspace" ADD CONSTRAINT "workspace_organization_id_organization_i
 CREATE INDEX "comment_item" ON "comment" USING btree ("item_id");--> statement-breakpoint
 CREATE INDEX "container_workspace" ON "container" USING btree ("workspace_id");--> statement-breakpoint
 CREATE INDEX "cycle_workspace" ON "cycle" USING btree ("workspace_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "snapshot_ws_cycle_day" ON "daily_snapshot" USING btree ("workspace_id","cycle_id","day");--> statement-breakpoint
 CREATE UNIQUE INDEX "dependency_pair" ON "dependency" USING btree ("item_id","depends_on_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "item_workspace_number" ON "item" USING btree ("workspace_id","number");--> statement-breakpoint
 CREATE INDEX "item_stage_position" ON "item" USING btree ("stage_id","position");--> statement-breakpoint

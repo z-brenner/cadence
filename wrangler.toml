@@ -14,5 +14,9 @@ not_found_handling = "single-page-application"
 #   BETTER_AUTH_SECRET     32+ random bytes, base64
 #   BETTER_AUTH_URL        Public URL of this deployment, e.g. https://cadence.example.com
 
+# Nightly report snapshots at 02:10 UTC.
+[triggers]
+crons = ["10 2 * * *"]
+
 [vars]
 APP_NAME = "Cadence"

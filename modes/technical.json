@@ -22,7 +22,7 @@
     "dueDates": false,
     "sizing": true,
     "charts": { "progress": true, "throughput": true, "flow": true },
-    "views": ["board", "list", "timeline"],
+    "views": ["board", "list"],
     "codeMarkdown": true
   },
   "defaults": {

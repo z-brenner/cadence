@@ -6,10 +6,13 @@ import { nanoid } from "nanoid";
 import { createDb, type Db, schema } from "./db";
 import { createAuth, type Auth, type AuthEnv } from "./auth";
 import { resolveMode, listModes } from "./modes";
+import { buildReport, snapshotAll } from "./reports";
 
 export type Bindings = AuthEnv & {
   DATABASE_URL: string;
   APP_NAME?: string;
+  /** Shared secret for the HTTP cron route. Only needed on platforms without a native scheduler (Vercel). */
+  CRON_SECRET?: string;
 };
 
 type Variables = {
@@ -230,8 +233,9 @@ export function createApp() {
     // Closing is derived from the terminal flag on the stage, not from a mode.
     let closedAt = before.closedAt;
     if (body.stageId && body.stageId !== before.stageId) {
-      const [st] = await db.select().from(stage).where(eq(stage.id, body.stageId)).limit(1);
-      const nowClosed = !!st?.isTerminal;
+      const [st] = await db.select().from(stage).where(and(eq(stage.id, body.stageId), eq(stage.workspaceId, ws.id))).limit(1);
+      if (!st) return c.json({ error: "stage not in this workspace" }, 400);
+      const nowClosed = st.isTerminal;
       if (nowClosed && !closedAt) { closedAt = new Date(); events.push({ id: nanoid(), workspaceId: ws.id, itemId: before.id, actorId: userId, kind: "closed" }); }
       if (!nowClosed && closedAt) { closedAt = null; events.push({ id: nanoid(), workspaceId: ws.id, itemId: before.id, actorId: userId, kind: "reopened" }); }
     }
@@ -262,11 +266,16 @@ export function createApp() {
     else if (b !== undefined) position = b - 1000;
     else position = 1000;
 
-    const [st] = await db.select().from(stage).where(eq(stage.id, body.stageId)).limit(1);
-    const closedAt = st?.isTerminal ? (cur.closedAt ?? new Date()) : null;
+    const [st] = await db.select().from(stage).where(and(eq(stage.id, body.stageId), eq(stage.workspaceId, ws.id))).limit(1);
+    if (!st) return c.json({ error: "stage not in this workspace" }, 400);
+    const closedAt = st.isTerminal ? (cur.closedAt ?? new Date()) : null;
     const ops: any[] = [db.update(item).set({ stageId: body.stageId, position, closedAt, updatedAt: new Date() }).where(eq(item.id, cur.id))];
     if (body.stageId !== cur.stageId) {
-      ops.push(db.insert(itemEvent).values({ id: nanoid(), workspaceId: ws.id, itemId: cur.id, actorId: userId, kind: "stage_changed", before: { stageId: cur.stageId }, after: { stageId: body.stageId } }));
+      const ev = (kind: string, before?: Record<string, unknown>, after?: Record<string, unknown>) => ({ id: nanoid(), workspaceId: ws.id, itemId: cur.id, actorId: userId, kind, before, after });
+      const events = [ev("stage_changed", { stageId: cur.stageId }, { stageId: body.stageId })];
+      if (closedAt && !cur.closedAt) events.push(ev("closed"));
+      if (!closedAt && cur.closedAt) events.push(ev("reopened"));
+      ops.push(db.insert(itemEvent).values(events));
     }
     await db.batch(ops as any);
     return c.json({ ok: true, position });
@@ -314,6 +323,29 @@ export function createApp() {
     const id = nanoid();
     await c.get("db").insert(cycle).values({ id, workspaceId: ws.id, name: body.name, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt) });
     return c.json({ id }, 201);
+  });
+
+  // ------------------------------------------------------------------------
+  // Reports
+  // ------------------------------------------------------------------------
+  app.get("/api/workspaces/:id/reports", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const cycleId = c.req.query("cycleId") || null;
+    return c.json(await buildReport(c.get("db"), ws.id, cycleId));
+  });
+
+  /**
+   * HTTP cron for platforms without a scheduled handler. Vercel calls this
+   * from vercel.json "crons" with Authorization: Bearer $CRON_SECRET.
+   * Cloudflare uses the scheduled() export in entry.cloudflare.ts instead.
+   */
+  app.on(["GET", "POST"], "/api/cron/snapshots", async (c) => {
+    const secret = c.env.CRON_SECRET;
+    const auth = c.req.header("authorization") ?? "";
+    if (!secret || auth !== `Bearer ${secret}`) return c.json({ error: "unauthorized" }, 401);
+    const n = await snapshotAll(c.get("db"));
+    return c.json({ ok: true, workspaces: n });
   });
 
   app.onError((err, c) => {

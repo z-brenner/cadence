@@ -2,3 +2,5 @@
 DATABASE_URL=
 BETTER_AUTH_SECRET=
 BETTER_AUTH_URL=http://localhost:5173
+# Only needed on Vercel; bearer token the cron uses to call /api/cron/snapshots.
+CRON_SECRET=
