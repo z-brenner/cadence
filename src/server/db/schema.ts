@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  date,
   integer,
   boolean,
   real,
@@ -140,7 +141,7 @@ export const container = pgTable(
     title: text("title").notNull(),
     description: text("description"),
     status: text("status").notNull().default("open"),
-    dueAt: timestamp("due_at"),
+    dueOn: date("due_on", { mode: "string" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [index("container_workspace").on(t.workspaceId)],
@@ -166,7 +167,7 @@ export const milestone = pgTable(
     id: text("id").primaryKey(),
     workspaceId: text("workspace_id").notNull().references(() => workspace.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    dueAt: timestamp("due_at"),
+    dueOn: date("due_on", { mode: "string" }),
   },
   (t) => [index("milestone_workspace").on(t.workspaceId)],
 );
@@ -194,7 +195,8 @@ export const item = pgTable(
      * mode maps it to S/M/L via the profile's sizeScale. Reports use the number.
      */
     size: real("size"),
-    dueAt: timestamp("due_at"),
+    /** Calendar date with no time component. Due dates are a day, not an instant. */
+    dueOn: date("due_on", { mode: "string" }),
     /** Named reviewer or approver. Prominent in knowledge mode, hidden by default in technical mode. */
     reviewerId: text("reviewer_id").references(() => user.id, { onDelete: "set null" }),
     /** Free-form external references (branch, PR URL, doc link). Rendered per mode. */

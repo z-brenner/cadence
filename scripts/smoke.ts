@@ -34,8 +34,10 @@ async function call(method: string, path: string, body?: unknown, headers: Recor
   return { status: res.status, json, text };
 }
 
+let passed = 0;
 function assert(cond: unknown, msg: string) {
   if (!cond) { console.error("FAIL:", msg); process.exit(1); }
+  passed++;
   console.log("ok  ", msg);
 }
 
@@ -77,8 +79,10 @@ r = await call("PATCH", `/api/workspaces/${wsId}/items/${a}`, { stageId: stages[
 r = await call("GET", `/api/workspaces/${wsId}/items`);
 assert(r.json.find((i: any) => i.id === a).closedAt === null, "reopened when moved off terminal stage");
 
-r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueAt: "2026-10-01T12:00:00.000Z", size: 8 });
-assert(r.status === 200, "patch dueAt and size");
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueOn: "2026-10-01", size: 8 });
+assert(r.status === 200 && r.json.dueOn === "2026-10-01", "patch dueOn and size; date round-trips as YYYY-MM-DD");
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { dueOn: "2026-10-01T12:00:00Z" });
+assert(r.status === 400, "dueOn rejects a timestamp");
 
 // Reports
 r = await call("POST", `/api/workspaces/${wsId}/items/${a}/move`, { stageId: stages[4].id });
@@ -143,6 +147,28 @@ assert(r.json.profile.terminology.item.one === "Task", "switched to knowledge mo
 r = await call("GET", `/api/workspaces/${wsId}/items`);
 assert(r.json.length === 2 && r.json.find((i: any) => i.id === b).size === 8, "items and sizes survive mode switch");
 
+// Foreign references are rejected on create, patch, and move anchors
+const ownerCookie = cookie;
+r = await call("POST", "/api/workspaces", { organizationId: orgId, name: "Other WS", slug: "other", mode: "knowledge" });
+const ws2 = r.json.id;
+r = await call("GET", `/api/workspaces/${ws2}`);
+const ws2Stage = r.json.stages[0].id;
+r = await call("POST", `/api/workspaces/${ws2}/items`, { title: "foreign" });
+const foreignItem = r.json.id;
+r = await call("POST", `/api/workspaces/${ws2}/cycles`, { name: "c", startsAt: new Date().toISOString(), endsAt: new Date().toISOString() });
+const foreignCycle = r.json.id;
+for (const [field, value] of [["stageId", ws2Stage], ["cycleId", foreignCycle], ["containerId", "nope"], ["milestoneId", "nope"], ["assigneeId", "nope"], ["reviewerId", "nope"]] as const) {
+  r = await call("POST", `/api/workspaces/${wsId}/items`, { title: "x", [field]: value });
+  assert(r.status === 400 && r.json.error.startsWith(field), `create rejects foreign ${field}`);
+  r = await call("PATCH", `/api/workspaces/${wsId}/items/${a}`, { [field]: value });
+  assert(r.status === 400, `patch rejects foreign ${field}`);
+}
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${a}`, { cycleId: null, assigneeId: null });
+assert(r.status === 200 && r.json.cycleId === null, "patch accepts null to clear a reference");
+r = await call("POST", `/api/workspaces/${wsId}/items/${a}/move`, { stageId: stages[1].id, afterItemId: foreignItem });
+assert(r.status === 400, "move rejects a foreign anchor");
+cookie = ownerCookie;
+
 // Permission boundary
 cookie = "";
 r = await call("POST", "/api/auth/sign-up/email", { email: `other-${Date.now()}@example.com`, password: "password123", name: "Other" });
@@ -160,5 +186,5 @@ assert(r.status === 401, "anonymous gets 401");
   assert(after - before <= 10, `createDb reuses a pool (connections ${before} -> ${after})`);
 }
 
-console.log("\nALL PASS");
+console.log(`\nALL PASS (${passed} assertions)`);
 await closeDbPools();

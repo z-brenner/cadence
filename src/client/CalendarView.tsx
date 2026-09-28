@@ -12,11 +12,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** Local-date key, YYYY-MM-DD, so items land on the day the user sees. */
 const key = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-/**
- * Month grid keyed on dueAt. Dropping a card on a day sets its due date.
- * The client writes local noon as a UTC instant so the calendar date survives
- * ordinary time zone offsets; the API stores whatever instant it is given.
- */
+/** Month grid keyed on dueOn (a YYYY-MM-DD string). Dropping a card on a day sets its due date. */
 export function CalendarView({ items, patch }: Props) {
   const t = useT();
   const [cursor, setCursor] = useState(() => {
@@ -35,22 +31,20 @@ export function CalendarView({ items, patch }: Props) {
   const byDay = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of items) {
-      if (!it.dueAt) continue;
-      const k = key(new Date(it.dueAt));
-      (m.get(k) ?? m.set(k, []).get(k)!).push(it);
+      if (!it.dueOn) continue;
+      (m.get(it.dueOn) ?? m.set(it.dueOn, []).get(it.dueOn)!).push(it);
     }
     return m;
   }, [items]);
 
-  const undated = useMemo(() => items.filter((i) => !i.dueAt && !i.closedAt), [items]);
+  const undated = useMemo(() => items.filter((i) => !i.dueOn && !i.closedAt), [items]);
   const today = key(new Date());
 
   function onDrop(e: DragEvent, day: Date | null) {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain");
     if (!id) return;
-    const dueAt = day ? new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).toISOString() : null;
-    patch(id, { dueAt });
+    patch(id, { dueOn: day ? key(day) : null });
   }
 
   const card = (it: Item) => (

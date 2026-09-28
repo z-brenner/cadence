@@ -59,7 +59,7 @@ export function Board({ ws, items, patch, move }: Props) {
               </div>
               <div className="meta">
                 {show.size && <SizeField item={it} patch={patch} />}
-                {show.dueAt && <DueField item={it} patch={patch} />}
+                {show.dueOn && <DueField item={it} patch={patch} />}
                 {show.references && <References item={it} />}
               </div>
             </article>

@@ -40,7 +40,7 @@ export type Item = {
   assigneeId: string | null;
   reviewerId: string | null;
   size: number | null;
-  dueAt: string | null;
+  dueOn: string | null; // YYYY-MM-DD
   references: Array<{ kind: string; url: string; label?: string }>;
   closedAt: string | null;
 };

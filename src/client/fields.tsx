@@ -23,14 +23,9 @@ export function SizeField({ item, patch }: { item: Item; patch: Patch }) {
   );
 }
 
+/** Due dates are calendar dates (YYYY-MM-DD); no time zone conversion anywhere. */
 export function DueField({ item, patch }: { item: Item; patch: Patch }) {
-  return (
-    <input
-      type="date"
-      value={item.dueAt ? item.dueAt.slice(0, 10) : ""}
-      onChange={(e) => patch(item.id, { dueAt: e.target.value ? new Date(e.target.value + "T12:00:00").toISOString() : null })}
-    />
-  );
+  return <input type="date" value={item.dueOn ?? ""} onChange={(e) => patch(item.id, { dueOn: e.target.value || null })} />;
 }
 
 export function References({ item }: { item: Item }) {
@@ -54,7 +49,7 @@ export function useVisibleFields() {
   return {
     number: on("number"),
     size: features.sizing && on("size"),
-    dueAt: features.dueDates && on("dueAt"),
+    dueOn: features.dueDates && on("dueOn"),
     references: features.codeReferences && on("references"),
     reviewer: features.reviewer && on("reviewer"),
   };

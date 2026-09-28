@@ -15,6 +15,13 @@
       "when": 1790618605760,
       "tag": "0001_invitation_created_at_and_snapshot_nulls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790620231982,
+      "tag": "0002_due_dates_are_dates",
+      "breakpoints": true
     }
   ]
 }
