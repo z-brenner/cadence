@@ -94,6 +94,11 @@ assert(r.json.throughput.slice(0, 11).every((w: any) => w.count === 0), "earlier
   const db0 = createDb(env.DATABASE_URL);
   const [{ label }] = await db0.execute<{ label: string }>(sql`select to_char(date_trunc('week', now()), 'IYYY-"W"IW') as label`).then((x: any) => x.rows ?? x);
   assert(thisWeek.week === label, `JS ISO week label matches Postgres (${thisWeek.week} vs ${label})`);
+  // Year-boundary cases, JS vs Postgres, so a refactor of isoWeekLabel cannot silently drift.
+  const { isoWeekLabel } = await import("../src/server/reports");
+  const dates = ["2026-09-28", "2026-01-01", "2025-12-29", "2024-12-30", "2021-01-03", "2020-12-31", "2027-01-03", "2032-12-31"];
+  const pg = await db0.execute<{ d: string; l: string }>(sql`select d, to_char(date_trunc('week', d::timestamp), 'IYYY-"W"IW') as l from jsonb_array_elements_text(${JSON.stringify(dates)}::jsonb) d`).then((x: any) => x.rows ?? x);
+  assert(pg.every((r: any) => isoWeekLabel(new Date(r.d + "T00:00:00Z")) === r.l), `ISO week labels match Postgres at year boundaries (${pg.map((r: any) => r.l).join(",")})`);
 }
 assert(r.json.flow[0].byStage[stages[4].id] === 1, "flow shows 1 item in Done");
 

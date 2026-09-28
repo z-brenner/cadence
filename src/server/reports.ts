@@ -133,7 +133,7 @@ function startOfIsoWeek(d: Date) {
 }
 
 /** Same label Postgres produces with to_char(..., 'IYYY-"W"IW'). Verified against Postgres in scripts/smoke.ts. */
-function isoWeekLabel(d: Date) {
+export function isoWeekLabel(d: Date) {
   const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
   t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3); // Thursday of this ISO week
   const thursday = t.getTime();

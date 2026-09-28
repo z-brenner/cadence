@@ -36,7 +36,9 @@ export function createDb(databaseUrl: string): Db {
   }
   const db = drizzlePg(pool, { schema }) as unknown as Db;
   if (typeof (db as any).batch !== "function") {
-    // Sequential emulation of neon-http's batch(). Not atomic; neither is neon-http's.
+    // Sequential emulation of neon-http's batch(). Unlike neon-http, which runs
+    // the batch in one transaction, this is not atomic. Acceptable for dev and
+    // tests; wrap in BEGIN/COMMIT on a checked-out client if you self-host on pg.
     (db as any).batch = async (queries: Array<Promise<unknown>>) => {
       const out = [];
       for (const q of queries) out.push(await q);

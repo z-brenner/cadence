@@ -28,6 +28,9 @@ export function useItems(wsId: string) {
   }, [reload]);
 
   const merge = useCallback((row: Item) => {
+    // Bump again on completion so a poll that started while the mutation was
+    // in flight (and may carry the pre-mutation row) is discarded.
+    mutationSeq.current++;
     setItems((prev) => (prev.some((i) => i.id === row.id) ? prev.map((i) => (i.id === row.id ? row : i)) : [...prev, row]));
   }, []);
 
