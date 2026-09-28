@@ -1,22 +1,10 @@
-import { useEffect, useState } from "react";
-import type { Cycle } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { apiMessage, type Cycle } from "./api";
 import { useT } from "./mode";
 import type { useCycles } from "./useCycles";
 
 type Store = ReturnType<typeof useCycles>;
 type Draft = Omit<Cycle, "id">;
-
-/** Pull a readable message out of an API error body; fall back to the raw text. */
-function apiMessage(e: unknown): string {
-  const m = String((e as Error).message ?? e);
-  const body = m.replace(/^\d{3}\s*/, "");
-  try {
-    const j = JSON.parse(body);
-    if (j.issues?.length) return j.issues.map((i: any) => i.message).join("; ");
-    if (typeof j.error === "string") return j.error;
-  } catch {}
-  return m;
-}
 
 /**
  * Manage cycles: create the next one with profile defaults, edit dates and
@@ -86,8 +74,18 @@ function CycleRow({ cycle, active, onSave, onDelete }: { cycle: Cycle; active: b
   const [d, setD] = useState<Draft>({ name: cycle.name, startsOn: cycle.startsOn, endsOn: cycle.endsOn });
   const [confirm, setConfirm] = useState(false);
 
-  // Follow external updates (a successful save returns the server row; a failed one resets).
-  useEffect(() => { setD({ name: cycle.name, startsOn: cycle.startsOn, endsOn: cycle.endsOn }); }, [cycle.name, cycle.startsOn, cycle.endsOn]);
+  // Follow external updates field by field, so a save resolving on one field
+  // does not discard an edit in progress on another field of the same row.
+  const prev = useRef(cycle);
+  useEffect(() => {
+    const p = prev.current;
+    prev.current = cycle;
+    setD((x) => ({
+      name: p.name !== cycle.name ? cycle.name : x.name,
+      startsOn: p.startsOn !== cycle.startsOn ? cycle.startsOn : x.startsOn,
+      endsOn: p.endsOn !== cycle.endsOn ? cycle.endsOn : x.endsOn,
+    }));
+  }, [cycle]);
 
   const save = async (key: keyof Draft) => {
     const v = key === "name" ? d.name.trim() : d[key];

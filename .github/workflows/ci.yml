@@ -47,7 +47,7 @@ jobs:
       - name: UI walkthrough
         run: |
           npx tsx scripts/ui/serve.ts &
-          sleep 3
+          for i in $(seq 1 30); do curl -sf localhost:5199/api/health && break; sleep 1; done
           node scripts/ui/walkthrough.mjs shots
       - uses: actions/upload-artifact@v4
         if: always()

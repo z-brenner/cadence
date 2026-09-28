@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, authClient, type Workspace } from "./api";
+import { api, apiMessage, authClient, type Workspace } from "./api";
 import { ModeProvider, useMode, useT } from "./mode";
 import { useItems } from "./useItems";
 import { Board } from "./Board";
@@ -226,7 +226,7 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
       await store.create(draft.trim(), cycleId ? { cycleId } : {});
       setDraft("");
     } catch (e) {
-      setCreateErr(String((e as Error).message ?? e));
+      setCreateErr(apiMessage(e));
     }
   }
 

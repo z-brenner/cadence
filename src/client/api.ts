@@ -53,6 +53,18 @@ export type Report = {
   flow: Array<{ day: string; byStage: Record<string, number> }>;
 };
 
+/** Pull a readable message out of an API error; fall back to the raw text. */
+export function apiMessage(e: unknown): string {
+  const m = String((e as Error).message ?? e);
+  const body = m.replace(/^\d{3}\s*/, "");
+  try {
+    const j = JSON.parse(body);
+    if (j.issues?.length) return j.issues.map((i: { message: string }) => i.message).join("; ");
+    if (typeof j.error === "string") return j.error;
+  } catch {}
+  return m;
+}
+
 export const api = {
   modes: () => req<Array<{ id: string; name: string; description: string }>>("/api/modes"),
   workspaces: () => req<Array<Omit<Workspace, "profile" | "stages">>>("/api/workspaces"),
