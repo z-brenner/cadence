@@ -1,9 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
-import { Pool, types as pgTypes } from "pg";
-
-const defaultTypeParser = (oid: number, format?: any) => (pgTypes as any).getTypeParser(oid, format);
+import { Pool } from "pg";
 import * as schema from "./schema";
 
 export type Db = ReturnType<typeof drizzleNeon<typeof schema>>;
@@ -27,13 +25,9 @@ const pools = new Map<string, Pool>();
 export function createDb(databaseUrl: string): Db {
   const u = new URL(databaseUrl);
   const usePg = u.searchParams.get("driver") === "pg" || u.hostname === "localhost" || u.hostname === "127.0.0.1";
-  if (!usePg) {
-    // pg-types parses date (OID 1082) into a local-midnight JS Date, which
-    // drizzle then re-serializes through toISOString(): one day off east of
-    // UTC. Keep dates as the YYYY-MM-DD text Postgres sent.
-    const sql = neon(databaseUrl, { types: { getTypeParser: (oid: number, format?: any) => (oid === 1082 ? (v: string) => v : defaultTypeParser(oid, format)) } as any });
-    return drizzleNeon(sql, { schema });
-  }
+  // drizzle-orm/neon-http registers identity parsers for date and timestamp
+  // OIDs on the neon client, so date columns arrive as YYYY-MM-DD text.
+  if (!usePg) return drizzleNeon(neon(databaseUrl), { schema });
 
   u.searchParams.delete("driver");
   const key = u.toString();
