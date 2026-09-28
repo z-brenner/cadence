@@ -70,6 +70,10 @@ Per-workspace overrides (`workspace.modeOverrides`) deep-merge on top of the pro
 - Sizes are stored as numbers. The scale (points, t-shirt, hours) is display only.
 - Every state change writes an `item_event` row. Reports are built from that log, so it must be written from day one.
 
+## Cycles
+
+A cycle (Sprint in technical mode, Week in knowledge mode) is an inclusive span of calendar dates. The header filter shows the current cycle, any cycle, unassigned items, or everything; it defaults to the current cycle when that cycle has items, otherwise to everything, and after that the user owns it. Items created while a cycle is selected go into that cycle. "Manage" opens a panel to create the next cycle (starting the day after the latest one ends, with the length from `defaults.cycleLengthDays`), rename, adjust dates, or delete. Deleting a cycle unassigns its items.
+
 ## Reports
 
 Three charts, each gated by `features.charts` in the mode profile and named by `terminology.reports`:
@@ -82,11 +86,13 @@ Progress and flow read from `daily_snapshot`, written once a day by a cron (Clou
 
 ## Testing
 
-`npm run smoke` runs 54 assertions through the real Hono app against a real Postgres: auth, org and workspace creation, items, board moves, event log, reports, cron, mode switching, and permission boundaries. CI runs it under two time zones. Point `DATABASE_URL` at a scratch database; the test creates its own users and never deletes anything. It exercises the node-postgres driver only; the Neon HTTP driver used on Cloudflare and Vercel is not covered by CI.
+`npm run smoke` runs 65 assertions through the real Hono app against a real Postgres: auth, org and workspace creation, items, board moves, event log, reports, cron, mode switching, and permission boundaries. CI runs it under two time zones. Point `DATABASE_URL` at a scratch database; the test creates its own users and never deletes anything. It exercises the node-postgres driver only; the Neon HTTP driver used on Cloudflare and Vercel is not covered by CI.
+
+`npm run ui` drives the built app in Chromium with Playwright (`scripts/ui/walkthrough.mjs`): sign-up, workspace creation, items, cycles, filters, delete-while-filtered, mode switch. It writes screenshots and fails on any page or console error. Start `scripts/ui/serve.ts` first; CI runs it and uploads the screenshots as an artifact.
 
 ## What is not here yet
 
-- Timeline view (#6) and cycle management UI (#7).
+- Timeline view (#6).
 - Labels, comments, dependencies, milestones have tables and no UI.
 - Invitations UI. Better Auth's organization plugin has the API; wire it to a settings page.
 - Realtime adapter.

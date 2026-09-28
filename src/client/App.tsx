@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import { api, authClient, type Workspace } from "./api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, apiMessage, authClient, type Workspace } from "./api";
 import { ModeProvider, useMode, useT } from "./mode";
 import { useItems } from "./useItems";
 import { Board } from "./Board";
 import { ListView } from "./ListView";
 import { CalendarView } from "./CalendarView";
 import { ReportsView } from "./ReportsView";
+import { useCycles } from "./useCycles";
+import { CyclesPanel } from "./CyclesPanel";
 
 type ModeSummary = { id: string; name: string; description: string };
 
@@ -179,22 +181,53 @@ function NewWorkspace({ orgs, modes, onDone }: { orgs: Array<{ id: string; name:
 
 type View = "board" | "list" | "calendar" | "timeline" | "reports";
 
+/** Cycle filter: "" = all, "none" = unassigned, otherwise a cycle id. Defaults to the current cycle once loaded. */
+type CycleFilter = "" | "none" | string;
+
 function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSummary[]; onSwitch: (m: string) => void }) {
   const t = useT();
   const { features } = useMode();
   const store = useItems(ws.id);
+  const cyc = useCycles(ws.id);
   const [draft, setDraft] = useState("");
+  const [managing, setManaging] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
 
   const hasReports = features.charts.progress || features.charts.throughput || features.charts.flow;
   const views: View[] = [...features.views, ...(hasReports ? (["reports"] as View[]) : [])];
   const [view, setView] = useState<View>(views[0]);
   const active: View = views.includes(view) ? view : views[0];
 
+  // Filter default is decided once, after cycles and items have both loaded:
+  // the current cycle if it has any items, otherwise everything. After that
+  // the user owns it; creating or assigning cycles never moves it.
+  const [filter, setFilter] = useState<CycleFilter>("");
+  const decided = useRef(false);
+  useEffect(() => {
+    if (decided.current || !cyc.loaded || !store.loaded) return;
+    decided.current = true;
+    if (cyc.active && store.items.some((i) => i.cycleId === cyc.active!.id)) setFilter(cyc.active.id);
+  }, [cyc.loaded, store.loaded, cyc.active, store.items]);
+  // A filter pointing at a cycle that no longer exists falls back to everything.
+  const effectiveFilter: CycleFilter = filter === "" || filter === "none" || cyc.byId.has(filter) ? filter : "";
+  const filtered = useMemo(() => {
+    if (effectiveFilter === "") return store.items;
+    if (effectiveFilter === "none") return store.items.filter((i) => !i.cycleId);
+    return store.items.filter((i) => i.cycleId === effectiveFilter);
+  }, [store.items, effectiveFilter]);
+
   async function create(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.trim()) return;
-    await store.create(draft.trim());
-    setDraft("");
+    // New items land in the cycle being viewed, so the board does not appear to swallow them.
+    const cycleId = effectiveFilter && effectiveFilter !== "none" ? effectiveFilter : undefined;
+    setCreateErr(null);
+    try {
+      await store.create(draft.trim(), cycleId ? { cycleId } : {});
+      setDraft("");
+    } catch (e) {
+      setCreateErr(apiMessage(e));
+    }
   }
 
   const viewLabel: Record<View, string> = {
@@ -214,6 +247,19 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
             <button key={v} className={active === v ? "active" : ""} onClick={() => setView(v)}>{viewLabel[v]}</button>
           ))}
         </nav>
+        {active !== "reports" && (
+          <label>
+            {t("cycle.one")}
+            <select value={effectiveFilter} onChange={(e) => setFilter(e.target.value)}>
+              <option value="">All</option>
+              <option value="none">No {t("cycle.one").toLowerCase()}</option>
+              {cyc.cycles.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}{cyc.active?.id === c.id ? " (current)" : ""}</option>
+              ))}
+            </select>
+            <button type="button" className="link" onClick={() => setManaging(true)}>Manage</button>
+          </label>
+        )}
         <label>
           Mode
           <select value={ws.mode} onChange={(e) => onSwitch(e.target.value)}>
@@ -222,18 +268,21 @@ function WorkspaceScreen({ ws, modes, onSwitch }: { ws: Workspace; modes: ModeSu
         </label>
       </header>
 
+      {managing && <CyclesPanel store={cyc} onClose={() => setManaging(false)} />}
+
       {active !== "reports" && (
         <form className="new-item" onSubmit={create}>
           <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={t("actions.create")} />
           <button type="submit">{t("actions.create")}</button>
+          {createErr && <span className="error">{createErr}</span>}
         </form>
       )}
 
-      {active === "board" && <Board ws={ws} items={store.items} patch={store.patch} move={store.move} />}
-      {active === "list" && <ListView ws={ws} items={store.items} patch={store.patch} />}
-      {active === "calendar" && <CalendarView items={store.items} patch={store.patch} />}
+      {active === "board" && <Board ws={ws} items={filtered} cycles={cyc.cycles} patch={store.patch} move={store.move} />}
+      {active === "list" && <ListView ws={ws} items={filtered} cycles={cyc.cycles} patch={store.patch} />}
+      {active === "calendar" && <CalendarView items={filtered} patch={store.patch} />}
       {active === "timeline" && <p className="muted">Timeline is not built yet.</p>}
-      {active === "reports" && <ReportsView ws={ws} />}
+      {active === "reports" && <ReportsView ws={ws} cycles={cyc.cycles} activeCycleId={cyc.active?.id ?? null} />}
     </>
   );
 }

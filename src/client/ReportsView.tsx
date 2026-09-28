@@ -7,17 +7,14 @@ import { useMode, useT } from "./mode";
  * Reports are gated per chart by features.charts. Terminology comes from the
  * profile, so "Burndown" and "Progress" are the same chart with different names.
  */
-export function ReportsView({ ws }: { ws: Workspace }) {
+export function ReportsView({ ws, cycles, activeCycleId }: { ws: Workspace; cycles: Cycle[]; activeCycleId: string | null }) {
   const t = useT();
   const { features } = useMode();
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [cycleId, setCycleId] = useState<string>("");
+  const [picked, setPicked] = useState<string | null>(null);
+  const cycleId = picked ?? activeCycleId ?? "";
+  const setCycleId = setPicked;
   const [report, setReport] = useState<Report | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.cycles(ws.id).then(setCycles).catch(() => setCycles([]));
-  }, [ws.id]);
 
   useEffect(() => {
     setReport(null);

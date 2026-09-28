@@ -40,17 +40,30 @@ export type Item = {
   assigneeId: string | null;
   reviewerId: string | null;
   size: number | null;
+  cycleId: string | null;
   dueOn: string | null; // YYYY-MM-DD
   references: Array<{ kind: string; url: string; label?: string }>;
   closedAt: string | null;
 };
 
-export type Cycle = { id: string; name: string; startsAt: string; endsAt: string };
+export type Cycle = { id: string; name: string; startsOn: string; endsOn: string }; // dates as YYYY-MM-DD
 export type Report = {
   progress: Array<{ day: string; open: number; closed: number }>;
   throughput: Array<{ week: string; size: number; count: number }>;
   flow: Array<{ day: string; byStage: Record<string, number> }>;
 };
+
+/** Pull a readable message out of an API error; fall back to the raw text. */
+export function apiMessage(e: unknown): string {
+  const m = String((e as Error).message ?? e);
+  const body = m.replace(/^\d{3}\s*/, "");
+  try {
+    const j = JSON.parse(body);
+    if (j.issues?.length) return j.issues.map((i: { message: string }) => i.message).join("; ");
+    if (typeof j.error === "string") return j.error;
+  } catch {}
+  return m;
+}
 
 export const api = {
   modes: () => req<Array<{ id: string; name: string; description: string }>>("/api/modes"),
@@ -65,6 +78,10 @@ export const api = {
   updateItem: (wsId: string, itemId: string, body: Partial<Item>) =>
     req<Item>(`/api/workspaces/${wsId}/items/${itemId}`, { method: "PATCH", body: JSON.stringify(body) }),
   cycles: (wsId: string) => req<Cycle[]>(`/api/workspaces/${wsId}/cycles`),
+  createCycle: (wsId: string, body: Omit<Cycle, "id">) => req<Cycle>(`/api/workspaces/${wsId}/cycles`, { method: "POST", body: JSON.stringify(body) }),
+  updateCycle: (wsId: string, id: string, body: Partial<Omit<Cycle, "id">>) =>
+    req<Cycle>(`/api/workspaces/${wsId}/cycles/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteCycle: (wsId: string, id: string) => req(`/api/workspaces/${wsId}/cycles/${id}`, { method: "DELETE" }),
   report: (wsId: string, cycleId: string | null) =>
     req<Report>(`/api/workspaces/${wsId}/reports${cycleId ? `?cycleId=${encodeURIComponent(cycleId)}` : ""}`),
   moveItem: (wsId: string, itemId: string, body: { stageId: string; afterItemId?: string | null; beforeItemId?: string | null }) =>

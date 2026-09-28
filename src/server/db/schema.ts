@@ -154,8 +154,9 @@ export const cycle = pgTable(
     id: text("id").primaryKey(),
     workspaceId: text("workspace_id").notNull().references(() => workspace.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    startsAt: timestamp("starts_at").notNull(),
-    endsAt: timestamp("ends_at").notNull(),
+    /** Inclusive calendar dates. A cycle is a span of days, not instants. */
+    startsOn: date("starts_on", { mode: "string" }).notNull(),
+    endsOn: date("ends_on", { mode: "string" }).notNull(),
   },
   (t) => [index("cycle_workspace").on(t.workspaceId)],
 );

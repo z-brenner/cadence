@@ -1,17 +1,18 @@
 import { useMemo, useState } from "react";
-import type { Item, Workspace } from "./api";
-import { DueField, References, SizeField, useVisibleFields } from "./fields";
+import type { Cycle, Item, Workspace } from "./api";
+import { CycleField, DueField, References, SizeField, useVisibleFields } from "./fields";
 import { useT } from "./mode";
 
 type Props = {
   ws: Workspace;
   items: Item[];
+  cycles: Cycle[];
   patch: (itemId: string, body: Partial<Item>) => void;
 };
 
 type SortKey = "number" | "title" | "stage" | "size" | "dueOn";
 
-export function ListView({ ws, items, patch }: Props) {
+export function ListView({ ws, items, cycles, patch }: Props) {
   const t = useT();
   const show = useVisibleFields();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "number", dir: 1 });
@@ -68,6 +69,7 @@ export function ListView({ ws, items, patch }: Props) {
             {th("stage", t("stage.one"))}
             {show.size && th("size", t("size.one"))}
             {show.dueOn && th("dueOn", t("dueDate"))}
+            {show.cycle && cycles.length > 0 && <th>{t("cycle.one")}</th>}
             {show.references && <th>{t("references")}</th>}
           </tr>
         </thead>
@@ -97,6 +99,7 @@ export function ListView({ ws, items, patch }: Props) {
               </td>
               {show.size && <td><SizeField item={it} patch={patch} /></td>}
               {show.dueOn && <td><DueField item={it} patch={patch} /></td>}
+              {show.cycle && cycles.length > 0 && <td><CycleField item={it} cycles={cycles} patch={patch} /></td>}
               {show.references && <td><References item={it} /></td>}
             </tr>
           ))}

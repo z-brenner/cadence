@@ -1,10 +1,11 @@
 import { useMemo, useState, type DragEvent } from "react";
-import type { Item, Workspace } from "./api";
-import { DueField, References, SizeField, useVisibleFields } from "./fields";
+import type { Cycle, Item, Workspace } from "./api";
+import { CycleField, DueField, References, SizeField, useVisibleFields } from "./fields";
 
 type Props = {
   ws: Workspace;
   items: Item[];
+  cycles: Cycle[];
   patch: (itemId: string, body: Partial<Item>) => void;
   move: (itemId: string, body: { stageId: string; afterItemId?: string | null }, optimistic: Partial<Item>) => void;
 };
@@ -13,7 +14,7 @@ type Props = {
  * Board renders entirely from the resolved profile. Native HTML5 drag and drop
  * keeps the dependency list short; swap in dnd-kit if you need touch support.
  */
-export function Board({ ws, items, patch, move }: Props) {
+export function Board({ ws, items, cycles, patch, move }: Props) {
   const show = useVisibleFields();
   const [dragging, setDragging] = useState<string | null>(null);
 
@@ -60,6 +61,7 @@ export function Board({ ws, items, patch, move }: Props) {
               <div className="meta">
                 {show.size && <SizeField item={it} patch={patch} />}
                 {show.dueOn && <DueField item={it} patch={patch} />}
+                {show.cycle && cycles.length > 0 && <CycleField item={it} cycles={cycles} patch={patch} />}
                 {show.references && <References item={it} />}
               </div>
             </article>
