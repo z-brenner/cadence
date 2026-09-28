@@ -5,6 +5,7 @@
   "functions": {
     "api/index.ts": { "runtime": "@vercel/node@5" }
   },
+  "crons": [{ "path": "/api/cron/snapshots", "schedule": "10 2 * * *" }],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

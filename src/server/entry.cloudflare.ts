@@ -1,4 +1,6 @@
 import { createApp, type Bindings } from "./app";
+import { createDb } from "./db";
+import { snapshotAll } from "./reports";
 
 const app = createApp();
 
@@ -8,5 +10,11 @@ export default {
     if (url.pathname.startsWith("/api/")) return app.fetch(request, env, ctx);
     // Everything else is the SPA, served by Workers static assets.
     return env.ASSETS.fetch(request);
+  },
+
+  /** Nightly snapshot for reports. Schedule lives in wrangler.toml [triggers]. */
+  async scheduled(_event: ScheduledEvent, env: Bindings, _ctx: ExecutionContext) {
+    // Awaited so a failed run is reported as a failed cron invocation.
+    await snapshotAll(createDb(env.DATABASE_URL));
   },
 };

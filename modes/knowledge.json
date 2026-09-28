@@ -8,6 +8,7 @@
     "cycle": { "one": "Week", "many": "Weeks" },
     "stage": { "one": "Stage", "many": "Stages" },
     "milestone": { "one": "Deadline", "many": "Deadlines" },
+    "dueDate": "Due",
     "size": { "one": "Effort", "many": "Effort" },
     "dependency": { "blockedBy": "Waiting on", "blocks": "Needed by" },
     "reviewer": "Approver",

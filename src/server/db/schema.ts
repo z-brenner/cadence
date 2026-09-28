@@ -13,6 +13,7 @@ import {
   jsonb,
   index,
   uniqueIndex,
+  unique,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,7 @@ export const invitation = pgTable("invitation", {
   status: text("status").notNull().default("pending"),
   expiresAt: timestamp("expires_at").notNull(),
   inviterId: text("inviter_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // ---------------------------------------------------------------------------
@@ -294,5 +296,5 @@ export const dailySnapshot = pgTable(
     openSize: real("open_size").notNull(),
     closedSize: real("closed_size").notNull(),
   },
-  (t) => [uniqueIndex("snapshot_ws_cycle_day").on(t.workspaceId, t.cycleId, t.day)],
+  (t) => [unique("snapshot_ws_cycle_day").on(t.workspaceId, t.cycleId, t.day).nullsNotDistinct()],
 );

@@ -10,6 +10,7 @@ const env = {
   BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
   BETTER_AUTH_URL: process.env.BETTER_AUTH_URL ?? "",
   APP_NAME: process.env.APP_NAME,
+  CRON_SECRET: process.env.CRON_SECRET,
 };
 
 export default (req: Request) => app.fetch(req, env);

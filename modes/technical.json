@@ -8,6 +8,7 @@
     "cycle": { "one": "Sprint", "many": "Sprints" },
     "stage": { "one": "Pipeline", "many": "Pipelines" },
     "milestone": { "one": "Release", "many": "Releases" },
+    "dueDate": "Due",
     "size": { "one": "Estimate", "many": "Estimates" },
     "dependency": { "blockedBy": "Blocked by", "blocks": "Blocks" },
     "reviewer": "Reviewer",
@@ -22,7 +23,7 @@
     "dueDates": false,
     "sizing": true,
     "charts": { "progress": true, "throughput": true, "flow": true },
-    "views": ["board", "list", "timeline"],
+    "views": ["board", "list"],
     "codeMarkdown": true
   },
   "defaults": {

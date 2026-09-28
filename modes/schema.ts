@@ -12,6 +12,8 @@ export const TerminologySchema = z.object({
   cycle: z.object({ one: z.string(), many: z.string() }),
   stage: z.object({ one: z.string(), many: z.string() }),
   milestone: z.object({ one: z.string(), many: z.string() }),
+  /** Label for an item's own due date. Distinct from milestone, which is a shared dated target. */
+  dueDate: z.string(),
   size: z.object({ one: z.string(), many: z.string() }),
   dependency: z.object({ blockedBy: z.string(), blocks: z.string() }),
   reviewer: z.string(),

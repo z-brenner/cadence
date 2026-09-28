@@ -65,7 +65,7 @@ Per-workspace overrides (`workspace.modeOverrides`) deep-merge on top of the pro
 ## Rules that keep it one product
 
 - No `if (mode === "technical")` anywhere. Ask `features.*` instead.
-- No user-facing string literals in JSX. Go through `t()`.
+- Domain nouns (item, container, cycle, stage, milestone, size, due date, dependency, reviewer, references, report names, actions) always go through `t()`. Generic chrome ("Loading", "Today", "Sign out") may be literal for now; a `ui` namespace on the profile is the planned home for it.
 - Feature flags hide UI. They never gate the API or delete data.
 - Sizes are stored as numbers. The scale (points, t-shirt, hours) is display only.
 - Every state change writes an `item_event` row. Reports are built from that log, so it must be written from day one.
