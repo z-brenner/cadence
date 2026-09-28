@@ -1,4 +1,4 @@
-import type { Item } from "./api";
+import type { Cycle, Item } from "./api";
 import { useMode, useSizeOptions, useT } from "./mode";
 
 type Patch = (itemId: string, body: Partial<Item>) => void;
@@ -28,6 +28,19 @@ export function DueField({ item, patch }: { item: Item; patch: Patch }) {
   return <input type="date" value={item.dueOn ?? ""} onChange={(e) => patch(item.id, { dueOn: e.target.value || null })} />;
 }
 
+/** Cycle picker. Lists cycles newest first; "none" clears. */
+export function CycleField({ item, cycles, patch }: { item: Item; cycles: Cycle[]; patch: Patch }) {
+  const t = useT();
+  return (
+    <select value={item.cycleId ?? ""} onChange={(e) => patch(item.id, { cycleId: e.target.value || null })} title={t("cycle.one")}>
+      <option value="">{t("cycle.one")}</option>
+      {cycles.map((c) => (
+        <option key={c.id} value={c.id}>{c.name}</option>
+      ))}
+    </select>
+  );
+}
+
 export function References({ item }: { item: Item }) {
   const t = useT();
   if (!item.references?.length) return null;
@@ -50,6 +63,7 @@ export function useVisibleFields() {
     number: on("number"),
     size: features.sizing && on("size"),
     dueOn: features.dueDates && on("dueOn"),
+    cycle: on("cycle"),
     references: features.codeReferences && on("references"),
     reviewer: features.reviewer && on("reviewer"),
   };

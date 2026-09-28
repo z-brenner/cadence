@@ -22,8 +22,8 @@ export async function snapshotWorkspace(db: Db, workspaceId: string, now = new D
   const activeCycles = await db
     .select({ id: cycle.id })
     .from(cycle)
-    // Column-mapped operators so the Date is bound as an ISO string regardless of process TZ.
-    .where(and(eq(cycle.workspaceId, workspaceId), lte(cycle.startsAt, now), gte(cycle.endsAt, now)));
+    // Cycles are inclusive date spans; "today" is the same UTC day key the snapshot uses.
+    .where(and(eq(cycle.workspaceId, workspaceId), lte(cycle.startsOn, day), gte(cycle.endsOn, day)));
 
   const scopes: Array<string | null> = [null, ...activeCycles.map((c) => c.id)];
   for (const cycleId of scopes) {

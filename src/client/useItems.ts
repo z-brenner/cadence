@@ -13,12 +13,14 @@ import { api, type Item } from "./api";
  */
 export function useItems(wsId: string) {
   const [items, setItems] = useState<Item[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const mutationSeq = useRef(0);
 
   const reload = useCallback(async () => {
     const seqAtStart = mutationSeq.current;
     const rows = await api.items(wsId);
     if (mutationSeq.current === seqAtStart) setItems(rows);
+    setLoaded(true);
   }, [wsId]);
 
   useEffect(() => {
@@ -63,5 +65,5 @@ export function useItems(wsId: string) {
     [wsId, reload],
   );
 
-  return { items, reload, patch, move, create };
+  return { items, loaded, reload, patch, move, create };
 }

@@ -125,7 +125,8 @@ assert(r.json.progress.length === 1, "snapshot upsert is idempotent");
 
 // Cycle-scoped report: active-cycle detection must not depend on process TZ
 const now = Date.now();
-r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "Sprint 1", startsAt: new Date(now - 3 * 3600_000).toISOString(), endsAt: new Date(now + 3 * 3600_000).toISOString() });
+const today = new Date().toISOString().slice(0, 10);
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "Sprint 1", startsOn: today, endsOn: today });
 assert(r.status === 201, "create active cycle");
 const cycleId = r.json.id;
 r = await call("PATCH", `/api/workspaces/${wsId}/items/${a}`, { cycleId });
@@ -133,6 +134,26 @@ assert(r.status === 200 && r.json.cycleId === cycleId, "PATCH returns updated ro
 r = await call("GET", `/api/workspaces/${wsId}/reports?cycleId=${cycleId}`);
 assert(r.json.progress.length === 1 && r.json.progress[0].closed === 3 && r.json.progress[0].open === 0, `cycle-scoped snapshot written for active cycle under TZ=${process.env.TZ ?? "unset"} (got ${JSON.stringify(r.json.progress)})`);
 assert(r.json.throughput[11].count === 1, "cycle-scoped throughput");
+
+// Cycle CRUD
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "bad", startsOn: "2026-10-10", endsOn: "2026-10-01" });
+assert(r.status === 400, "cycle rejects endsOn before startsOn");
+r = await call("POST", `/api/workspaces/${wsId}/cycles`, { name: "Sprint 2", startsOn: "2026-10-12", endsOn: "2026-10-25" });
+assert(r.status === 201 && r.json.startsOn === "2026-10-12", "create cycle returns row with date strings");
+const sprint2 = r.json.id;
+r = await call("PATCH", `/api/workspaces/${wsId}/cycles/${sprint2}`, { name: "Sprint 2b" });
+assert(r.status === 200 && r.json.name === "Sprint 2b" && r.json.endsOn === "2026-10-25", "patch cycle name keeps dates");
+r = await call("PATCH", `/api/workspaces/${wsId}/cycles/${sprint2}`, { startsOn: "2026-10-30" });
+assert(r.status === 400, "patch cycle rejects startsOn after existing endsOn");
+r = await call("GET", `/api/workspaces/${wsId}/cycles`);
+assert(r.json.length === 2 && r.json[0].id === sprint2, "cycles listed newest first");
+r = await call("PATCH", `/api/workspaces/${wsId}/items/${b}`, { cycleId: sprint2 });
+r = await call("DELETE", `/api/workspaces/${wsId}/cycles/${sprint2}`);
+assert(r.status === 200, "delete cycle");
+r = await call("GET", `/api/workspaces/${wsId}/items`);
+assert(r.json.find((i: any) => i.id === b).cycleId === null, "deleting a cycle unassigns its items");
+r = await call("DELETE", `/api/workspaces/${wsId}/cycles/${sprint2}`);
+assert(r.status === 404, "delete of a missing cycle is 404");
 
 // Move returns the row with closedAt derived server-side
 r = await call("POST", `/api/workspaces/${wsId}/items/${b}/move`, { stageId: stages[4].id });
@@ -157,7 +178,7 @@ r = await call("GET", `/api/workspaces/${ws2}`);
 const ws2Stage = r.json.stages[0].id;
 r = await call("POST", `/api/workspaces/${ws2}/items`, { title: "foreign" });
 const foreignItem = r.json.id;
-r = await call("POST", `/api/workspaces/${ws2}/cycles`, { name: "c", startsAt: new Date().toISOString(), endsAt: new Date().toISOString() });
+r = await call("POST", `/api/workspaces/${ws2}/cycles`, { name: "c", startsOn: "2026-01-01", endsOn: "2026-01-07" });
 const foreignCycle = r.json.id;
 for (const [field, value] of [["stageId", ws2Stage], ["cycleId", foreignCycle], ["containerId", "nope"], ["milestoneId", "nope"], ["assigneeId", "nope"], ["reviewerId", "nope"]] as const) {
   r = await call("POST", `/api/workspaces/${wsId}/items`, { title: "x", [field]: value });

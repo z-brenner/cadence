@@ -53,7 +53,7 @@ export const DefaultsSchema = z.object({
   sizeScale: SizeScaleSchema,
   cycleLengthDays: z.number().int().positive(),
   /** Fields shown on a board card, in order. */
-  cardFields: z.array(z.enum(["number", "assignee", "reviewer", "size", "dueOn", "container", "labels", "references"])),
+  cardFields: z.array(z.enum(["number", "assignee", "reviewer", "size", "dueOn", "cycle", "container", "labels", "references"])),
 });
 
 export const ModeProfileSchema = z.object({

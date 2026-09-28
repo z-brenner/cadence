@@ -36,6 +36,6 @@
     ],
     "sizeScale": { "kind": "points", "values": [1, 2, 3, 5, 8, 13] },
     "cycleLengthDays": 14,
-    "cardFields": ["number", "size", "assignee", "container", "labels", "references"]
+    "cardFields": ["number", "size", "cycle", "assignee", "container", "labels", "references"]
   }
 }

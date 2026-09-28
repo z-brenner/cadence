@@ -21,7 +21,7 @@ function foldSeries(series: Series[]): Series[] {
 }
 
 function niceMax(v: number) {
-  if (v <= 0) return 1;
+  if (v <= 0) return 2; // ticks 0, 1, 2 rather than 0, 0.5, 1 for empty data
   const p = 10 ** Math.floor(Math.log10(v));
   const m = v / p;
   return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
@@ -34,6 +34,7 @@ function useScales(labels: string[], max: number) {
 }
 
 function Axes({ labels, max, y }: { labels: string[]; max: number; y: (v: number) => number }) {
+  const fmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
   const ticks = [0, max / 2, max];
   const shown = labels.length <= 8 ? labels.map((l, i) => i) : [0, Math.floor(labels.length / 2), labels.length - 1];
   const xOf = (i: number) => PAD.l + (labels.length <= 1 ? 0 : (i / (labels.length - 1)) * (W - PAD.l - PAD.r));
@@ -42,7 +43,7 @@ function Axes({ labels, max, y }: { labels: string[]; max: number; y: (v: number
       {ticks.map((t) => (
         <g key={t}>
           <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} className="grid" />
-          <text x={PAD.l - 6} y={y(t) + 4} textAnchor="end" className="tick">{Math.round(t)}</text>
+          <text x={PAD.l - 6} y={y(t) + 4} textAnchor="end" className="tick">{fmt(t)}</text>
         </g>
       ))}
       {shown.map((i) => (
@@ -115,6 +116,7 @@ export function LineChart({ title, labels, series: raw, stacked = false, empty }
             <g key={series[si].name}>
               {stacked && <polygon points={`${top} ${bottom}`} fill={`var(--series-${si + 1})`} opacity={0.7} stroke="var(--surface)" strokeWidth={2} />}
               <polyline points={top} fill="none" stroke={`var(--series-${si + 1})`} strokeWidth={2} strokeLinejoin="round" />
+              {labels.length === 1 && <circle cx={x(0)} cy={y(st[0][1])} r={4} fill={`var(--series-${si + 1})`} />}
             </g>
           );
         })}

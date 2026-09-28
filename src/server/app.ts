@@ -354,16 +354,45 @@ export function createApp() {
   app.get("/api/workspaces/:id/cycles", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
-    return c.json(await c.get("db").select().from(cycle).where(eq(cycle.workspaceId, ws.id)).orderBy(desc(cycle.startsAt)));
+    return c.json(await c.get("db").select().from(cycle).where(eq(cycle.workspaceId, ws.id)).orderBy(desc(cycle.startsOn)));
   });
+
+  const cycleBody = z
+    .object({ name: z.string().min(1).max(80), startsOn: z.string().date(), endsOn: z.string().date() })
+    .refine((b) => b.startsOn <= b.endsOn, { message: "endsOn must not be before startsOn", path: ["endsOn"] });
 
   app.post("/api/workspaces/:id/cycles", async (c) => {
     const ws = await loadWorkspace(c, c.req.param("id"));
     if (!ws) return c.json({ error: "not found" }, 404);
-    const body = z.object({ name: z.string().min(1), startsAt: z.string().datetime(), endsAt: z.string().datetime() }).parse(await c.req.json());
+    const body = cycleBody.parse(await c.req.json());
     const id = nanoid();
-    await c.get("db").insert(cycle).values({ id, workspaceId: ws.id, name: body.name, startsAt: new Date(body.startsAt), endsAt: new Date(body.endsAt) });
-    return c.json({ id }, 201);
+    await c.get("db").insert(cycle).values({ id, workspaceId: ws.id, ...body });
+    const [row] = await c.get("db").select().from(cycle).where(eq(cycle.id, id)).limit(1);
+    return c.json(row, 201);
+  });
+
+  app.patch("/api/workspaces/:id/cycles/:cycleId", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const [cur] = await db.select().from(cycle).where(and(eq(cycle.id, c.req.param("cycleId")), eq(cycle.workspaceId, ws.id))).limit(1);
+    if (!cur) return c.json({ error: "not found" }, 404);
+    const partial = z.object({ name: z.string().min(1).max(80).optional(), startsOn: z.string().date().optional(), endsOn: z.string().date().optional() }).parse(await c.req.json());
+    const merged = cycleBody.parse({ ...cur, ...partial });
+    await db.update(cycle).set(merged).where(eq(cycle.id, cur.id));
+    const [row] = await db.select().from(cycle).where(eq(cycle.id, cur.id)).limit(1);
+    return c.json(row);
+  });
+
+  /** Deleting a cycle unassigns its items (FK is set null) and drops its snapshots (FK cascades). */
+  app.delete("/api/workspaces/:id/cycles/:cycleId", async (c) => {
+    const ws = await loadWorkspace(c, c.req.param("id"));
+    if (!ws) return c.json({ error: "not found" }, 404);
+    const db = c.get("db");
+    const [cur] = await db.select().from(cycle).where(and(eq(cycle.id, c.req.param("cycleId")), eq(cycle.workspaceId, ws.id))).limit(1);
+    if (!cur) return c.json({ error: "not found" }, 404);
+    await db.delete(cycle).where(eq(cycle.id, cur.id));
+    return c.json({ ok: true });
   });
 
   // ------------------------------------------------------------------------
